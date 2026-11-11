@@ -45,6 +45,25 @@ class Smoke(Base):
         self.ok('review', '--status', 'passed', '--reviewer', 'validator', '--note', 'checked')
         self.assertTrue((self.p / 'SECURITY_MATRIX.md').exists())
 
+    def test_scope_reviewed_all_clears_a_multi_file_run_in_one_call(self):
+        for name in ('A.cs', 'B.cs', 'C.cs'):
+            self.write(name, 'class X {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        for name in ('A.cs', 'B.cs', 'C.cs'):
+            self.write(name, 'class X { int y; }')
+        scan = self.ok('scan')
+        run = json.loads(scan.stdout)['run']
+        self.assertEqual(len(json.loads(scan.stdout)['paths']), 3)
+        # Without --all this is one call per path; the review cannot pass until every one is marked.
+        self.assertEqual(self.run_cli('review', '--status', 'passed', '--reviewer', 'v',
+                                      '--note', 'n').returncode, 2)
+        self.ok('scope-reviewed', '--run', str(run), '--all', '--actor', 'scanner')
+        self.ok('review', '--status', 'passed', '--reviewer', 'v', '--note', 'n')
+        self.assertEqual(self.run_cli('scope-reviewed', '--run', str(run), '--all',
+                                      '--actor', 'scanner').returncode, 2,
+                         'a second --all with nothing pending is an error, not a silent no-op')
+
     def test_illegal_transition_and_outside_path(self):
         self.write('A.cs', 'class A {}')
         git(self.d, 'add', 'A.cs')

@@ -109,3 +109,53 @@ Honest note on the matrix as an artifact: it records the seven candidates and th
 ## Conclusion
 
 Worth putting in Git as v0.1: the model (candidates → independent validation → remediation → independent review, all keyed to Git state and source hashes) is sound and the gates behave. Fix order before the next audit: D-1 and D-2 (block first use and deadlock the gate), then D-3 (coverage), then D-4 … D-7.
+
+---
+
+# Second run — driving the whole loop on a real repository (2026-11-11)
+
+Same target (`InventoryManagementContainers`, uncommitted round on `wip/round-20261111`), but this time
+the point was to exercise **scanner → remediator → validator → gate** end to end, not to audit the
+installer. Version under test: v0.1.2 installed, v0.1.3 produced from this run.
+
+## What the loop produced
+
+- **Seven candidates recorded and confirmed** in the matrix with file+line evidence (upload before row,
+  refresh-token family, CORS, log path, `Auth:Enforce`, `BaseRepository.Delete`, client extension).
+  Six were fixed, each with a test in `Testing/SecurityRegressionTests.cs`; the seventh (CORS) turned
+  into two startup refusals.
+- **The independent validator earned its place**: it re-ran the probes and found three regressions the
+  fixer had introduced — the orphan-file bug still alive on the JSON upload route, the log endpoint
+  returning 404 for every real file because reader and writer disagreed on the file name, and the hard
+  delete turning into a `500` on a parent with live children. All three were fixed and covered by tests
+  before the matrix moved to `verified_fixed`. Without a separate validator this round would have
+  shipped a "closed" finding that was not closed.
+
+## Defects found in the tooling itself
+
+- **D-8 — the installer reports success while the running profile stays stale.** `install.sh` wrote to
+  `~/.hermes/skills/software-development` only. A profile with its own `skills/` directory shadows that
+  path, so the active profile kept serving 0.1.2 while the installer printed the 0.1.3 paths. Measured:
+  `grep '^version:'` across both trees showed 0.1.2 and 0.1.3 side by side. Fixed with
+  `--profile NAME` / `HERMES_PROFILE`, which installs to both and prints every destination.
+- **D-9 — clearing a scope is one command per file.** A 28-path run needed 28 invocations of
+  `scope-reviewed --path`, and one mistyped path leaves the gate blocked with no hint about which
+  entry is still pending. Fixed with `scope-reviewed --run N --all`, which marks every pending entry of
+  that run and refuses a second call instead of pretending. Verified on the real 28-path scope.
+
+## Rules the tool cannot enforce, and the skill now states
+
+- **A scan invalidates the last review** (scope digest plus source hashes). Scanning while still
+  editing wasted a pass: the review recorded before the scan no longer applied afterwards.
+- **A finding is reopened by any later edit to its file** (findings carry the file's SHA-256), so
+  `fixed_pending_verification` has to be recorded after the last edit, not before.
+- **An empty findings list is not a clean audit.** The first pass recorded zero findings and a passing
+  review against this very tree; the same code had seven open issues when it was actually read. The
+  gate is only as good as the `scope-reviewed` marks somebody earned, which is why the skill repeats
+  the instruction and the README keeps the limitation.
+
+## Verdict
+
+The state machine, the independent-validation handoff and the gate behaved correctly under real use.
+Both defects found here were in the wrapper (installer, bookkeeping), not in the model, and both are
+fixed in v0.1.3 with tests (12 cases, `Ran 12 tests … OK`).
