@@ -32,17 +32,29 @@ def source_hash(root,path):
     if not f.is_relative_to(root) or not f.is_file():return 'missing'
     return hashlib.sha256(f.read_bytes()).hexdigest()
 
-def files(root,mode,base):
+CODE_EXTENSIONS = ('.cs', '.csproj', '.json', '.config', '.yml', '.yaml', '.razor', '.cshtml',
+                   '.ts', '.tsx', '.js', '.mjs', '.cjs', '.vue', '.sh', '.ps1', '.sql', '.html')
+LOCKFILES = ('package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock')
+
+def generated(path):
+    """Machine-written files nobody should review line by line."""
+    name = path.rsplit('/', 1)[-1]
+    return name in LOCKFILES or 'Migrations' in path.split('/') or path.endswith('.Designer.cs') or path.endswith('.g.cs')
+
+def files(root,mode,base,include_generated=False):
     if mode=='full':
         raw=git(root,'ls-files','--cached','--others','--exclude-standard').splitlines()
     else:
         raw=set(git(root,'diff','--name-only','HEAD').splitlines()+git(root,'ls-files','--others','--exclude-standard').splitlines())
         if base:raw|=set(git(root,'diff','--name-only',base,'HEAD').splitlines())
-    return sorted(x for x in raw if x.endswith(('.cs','.csproj','.json','.config','.yml','.yaml','.razor','.cshtml')) and not any(y in x.split('/') for y in ('bin','obj','.security','.git')) and (root/x).is_file())
+    return sorted(x for x in raw if x.endswith(CODE_EXTENSIONS)
+                  and not any(y in x.split('/') for y in ('bin','obj','.security','.git','node_modules'))
+                  and (include_generated or not generated(x))
+                  and (root/x).is_file())
 
 def render(root,c):
     rows=c.execute('SELECT * FROM findings ORDER BY CASE severity WHEN "critical" THEN 0 WHEN "high" THEN 1 WHEN "medium" THEN 2 ELSE 3 END,id').fetchall()
-    pending=c.execute('SELECT COUNT(*) FROM scope WHERE status != "reviewed"').fetchone()[0]
+    pending=c.execute('SELECT COUNT(*) FROM scope WHERE status="pending"').fetchone()[0]
     unresolved=c.execute("SELECT COUNT(*) FROM findings WHERE status NOT IN ('verified_fixed','integration_verified','false_positive')").fetchone()[0]
     latest=c.execute('SELECT * FROM reviews ORDER BY id DESC LIMIT 1').fetchone()
     head=git(root,'rev-parse','HEAD')
@@ -67,7 +79,7 @@ def snapshot(root,c):
 
 def main():
     a=argparse.ArgumentParser();a.add_argument('--repo',default='.');sub=a.add_subparsers(dest='cmd',required=True)
-    s=sub.add_parser('scan');s.add_argument('--mode',choices=['incremental','full'],default='incremental');s.add_argument('--base')
+    s=sub.add_parser('scan');s.add_argument('--mode',choices=['incremental','full'],default='incremental');s.add_argument('--base');s.add_argument('--include-generated',action='store_true',help='also scope lockfiles and EF migrations')
     s=sub.add_parser('finding');s.add_argument('--path',required=True);s.add_argument('--symbol',required=True);s.add_argument('--title',required=True);s.add_argument('--severity',choices=['critical','high','medium','low'],required=True);s.add_argument('--description',required=True);s.add_argument('--evidence',required=True);s.add_argument('--actor',required=True)
     s=sub.add_parser('transition');s.add_argument('id');s.add_argument('--status',required=True,choices=['needs_validation','confirmed','in_remediation','fixed_pending_verification','verified_fixed','integration_verified','false_positive','accepted_risk','reopened']);s.add_argument('--actor',required=True);s.add_argument('--note',required=True)
     s=sub.add_parser('scope-reviewed');s.add_argument('--run',type=int,required=True);s.add_argument('--path',required=True);s.add_argument('--actor',required=True)
@@ -76,7 +88,10 @@ def main():
     args=a.parse_args();root=root_dir(args.repo);c=db(root)
     try:
         if args.cmd=='scan':
-            head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base)
+            head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base,args.include_generated)
+            # A new scan supersedes the previous run's outstanding scope: keeping old pending rows
+            # would block the gate forever on files a later run no longer lists.
+            c.execute("UPDATE scope SET status='superseded' WHERE status='pending'")
             cur=c.execute('INSERT INTO runs(mode,commit_sha,created_at,status) VALUES(?,?,?,?)',(args.mode,head,now(),'pending'))
             run=cur.lastrowid
             for path in paths:c.execute('INSERT INTO scope(run_id,path) VALUES(?,?)',(run,path))
@@ -93,7 +108,10 @@ def main():
             run=c.execute('SELECT id FROM runs ORDER BY id DESC LIMIT 1').fetchone()
             if not run:raise ValueError('Run scan first')
             fid='SEC-'+digest('|'.join([args.path,args.symbol,args.title]))[:12].upper()
-            c.execute('INSERT OR IGNORE INTO findings VALUES(?,?,?,?,?,?,?,?,?,?,?)',(fid,args.path,args.symbol,args.title,args.severity,args.description,args.evidence,'needs_validation',source_hash(root,args.path),run['id'],now()))
+            cur=c.execute('INSERT OR IGNORE INTO findings VALUES(?,?,?,?,?,?,?,?,?,?,?)',(fid,args.path,args.symbol,args.title,args.severity,args.description,args.evidence,'needs_validation',source_hash(root,args.path),run['id'],now()))
+            if not cur.rowcount:
+                # Silently ignoring the duplicate would still leave an event claiming a transition.
+                raise ValueError(f'{fid} is already recorded for that path/symbol/title; use transition to change it')
             c.execute('INSERT INTO events(finding_id,previous,next,actor,note,created_at) VALUES(?,?,?,?,?,?)',(fid,None,'needs_validation',args.actor,'Candidate recorded',now()))
             c.commit();render(root,c);print(fid)
         elif args.cmd=='transition':
@@ -111,18 +129,26 @@ def main():
             c.execute('INSERT INTO events(finding_id,previous,next,actor,note,created_at) VALUES(?,?,?,?,?,?)',(args.id,r['status'],args.status,args.actor,args.note,now()))
             c.commit();render(root,c);print(args.id,args.status)
         elif args.cmd=='scope-reviewed':
-            cur=c.execute('UPDATE scope SET status="reviewed" WHERE run_id=? AND path=?',(args.run,args.path))
-            if not cur.rowcount:raise ValueError('Scope path not found')
+            cur=c.execute('UPDATE scope SET status="reviewed" WHERE run_id=? AND path=? AND status="pending"',(args.run,args.path))
+            if not cur.rowcount:
+                existing=c.execute('SELECT status FROM scope WHERE run_id=? AND path=?',(args.run,args.path)).fetchone()
+                raise ValueError(f'Scope entry is not pending ({existing["status"] if existing else "not in that run"}); run a fresh scan' if existing else 'Scope path not found')
             c.commit();render(root,c);print('reviewed',args.path)
         elif args.cmd=='review':
             unresolved=c.execute("SELECT COUNT(*) FROM findings WHERE status NOT IN ('verified_fixed','integration_verified','false_positive')").fetchone()[0]
-            pending=c.execute('SELECT COUNT(*) FROM scope WHERE status != "reviewed"').fetchone()[0]
+            pending=c.execute('SELECT COUNT(*) FROM scope WHERE status="pending"').fetchone()[0]
             if args.status=='passed' and (unresolved or pending):raise ValueError(f'Cannot pass: {unresolved} unresolved, {pending} unreviewed scope entries')
             c.execute('INSERT INTO reviews(commit_sha,scope_digest,status,reviewer,note,created_at) VALUES(?,?,?,?,?,?)',(git(root,'rev-parse','HEAD'),snapshot(root,c),args.status,args.reviewer,args.note,now()))
             c.commit();render(root,c);print('review recorded:',args.status)
         elif args.cmd=='status':
             valid=render(root,c)
-            print(json.dumps({'valid_integration_review':valid,'findings':[dict(x) for x in c.execute('SELECT id,path,symbol,severity,status FROM findings ORDER BY id')],'unreviewed_scope':[dict(x) for x in c.execute('SELECT run_id,path FROM scope WHERE status!="reviewed"')]},indent=2))
+            latest=c.execute('SELECT commit_sha,status,reviewer,created_at FROM reviews ORDER BY id DESC LIMIT 1').fetchone()
+            head=git(root,'rev-parse','HEAD')
+            print(json.dumps({'valid_integration_review':valid,'head':head,
+                'latest_review':dict(latest) if latest else None,
+                'review_applies_to_head':bool(latest and latest['commit_sha']==head),
+                'findings':[dict(x) for x in c.execute('SELECT id,path,symbol,severity,status FROM findings ORDER BY id')],
+                'unreviewed_scope':[dict(x) for x in c.execute('SELECT run_id,path FROM scope WHERE status="pending"')]},indent=2))
     finally:c.close()
 if __name__=='__main__':
     try:main()
