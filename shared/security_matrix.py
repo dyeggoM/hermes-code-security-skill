@@ -99,7 +99,8 @@ def main():
     s=sub.add_parser('scan');s.add_argument('--mode',choices=['incremental','full'],default='incremental');s.add_argument('--base');s.add_argument('--include-generated',action='store_true',help='also scope lockfiles and EF migrations')
     s=sub.add_parser('finding');s.add_argument('--path',required=True);s.add_argument('--symbol',required=True);s.add_argument('--title',required=True);s.add_argument('--severity',choices=['critical','high','medium','low'],required=True);s.add_argument('--description',required=True);s.add_argument('--evidence',required=True);s.add_argument('--actor',required=True)
     s=sub.add_parser('transition');s.add_argument('id');s.add_argument('--status',required=True,choices=['needs_validation','confirmed','in_remediation','fixed_pending_verification','verified_fixed','integration_verified','false_positive','accepted_risk','reopened']);s.add_argument('--actor',required=True);s.add_argument('--note',required=True)
-    s=sub.add_parser('scope-reviewed');s.add_argument('--run',type=int,required=True);s.add_argument('--path',required=True);s.add_argument('--actor',required=True)
+    s=sub.add_parser('scope-reviewed');s.add_argument('--run',type=int,required=True)
+    s.add_argument('--path',help='one path of that run');s.add_argument('--all',action='store_true',help='every pending path of that run, for a scope you read in one pass');s.add_argument('--actor',required=True)
     s=sub.add_parser('review');s.add_argument('--status',choices=['passed','failed'],required=True);s.add_argument('--reviewer',required=True);s.add_argument('--note',required=True)
     s=sub.add_parser('check',help='read-only release gate: exit 0 when the review is valid, 1 when not');s.add_argument('--json',action='store_true');s.add_argument('--quiet',action='store_true')
     sub.add_parser('status')
@@ -147,6 +148,11 @@ def main():
             c.execute('INSERT INTO events(finding_id,previous,next,actor,note,created_at) VALUES(?,?,?,?,?,?)',(args.id,r['status'],args.status,args.actor,args.note,now()))
             c.commit();render(root,c);print(args.id,args.status)
         elif args.cmd=='scope-reviewed':
+            if not args.path and not args.all:raise ValueError('Pass --path PATH or --all')
+            if args.all:
+                cur=c.execute('UPDATE scope SET status="reviewed" WHERE run_id=? AND status="pending"',(args.run,))
+                if not cur.rowcount:raise ValueError('No pending scope entries left in that run')
+                c.commit();render(root,c);print(f'reviewed {cur.rowcount} path(s) of run {args.run}');return
             cur=c.execute('UPDATE scope SET status="reviewed" WHERE run_id=? AND path=? AND status="pending"',(args.run,args.path))
             if not cur.rowcount:
                 existing=c.execute('SELECT status FROM scope WHERE run_id=? AND path=?',(args.run,args.path)).fetchone()

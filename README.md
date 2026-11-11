@@ -9,12 +9,18 @@ while anything is open. The reading of the code is the agent's job.
 ## Install
 
 ```bash
-bash scripts/install.sh
+bash scripts/install.sh                                  # shared skills dir
+bash scripts/install.sh --profile code-orchestrator      # shared dir + that profile's skills dir
 ```
 
 It copies the CLI to `~/.hermes/security-tools/security_matrix.py` and the three skills to
 `~/.hermes/skills/software-development/`. Override with `HERMES_SECURITY_TOOLS` and
 `HERMES_SKILLS_DIR`.
+
+**Name the profile you actually run.** A profile with its own `skills/` directory shadows the shared
+one, so installing only to `~/.hermes/skills` leaves that profile loading the previous version while
+the installer reports success. `--profile` (or `HERMES_PROFILE`) writes both and prints each
+destination.
 
 The skills invoke the CLI by that absolute path on purpose: Hermes does not export
 `HERMES_SKILL_DIR` to the shell, so a path relative to the skill directory works in one layout and
@@ -39,6 +45,8 @@ found:
 python3 $SM --repo . finding --path A.cs --symbol A.Run \
   --title "..." --severity high --description "..." --evidence "A.cs:42 ..." --actor scanner-agent
 python3 $SM --repo . scope-reviewed --run 1 --path A.cs --actor scanner-agent
+python3 $SM --repo . scope-reviewed --run 1 --all --actor scanner-agent   # every pending path of that run
+python3 $SM --repo . check                                               # read-only gate: exit 0 committable, 1 blocked
 python3 $SM --repo . transition SEC-ABCDEF123456 --status confirmed --actor verifier-agent --note "..."
 ```
 

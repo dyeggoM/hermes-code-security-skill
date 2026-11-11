@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.3 — a scope you can clear in one call, and the two rules that bite first
+
+From driving the tool on `InventoryManagementContainers` (28 changed paths in one run).
+
+- `scope-reviewed --all`: marks every pending path of a run in one command. Clearing a 28-path scope
+  was 28 invocations of a CLI with a `--path` that has to be typed exactly; a single mistyped path left
+  the gate blocked with no way to see which one without reading `status`. `--path` still works, the two
+  are mutually exclusive, and a second `--all` with nothing pending exits 2 instead of pretending.
+- The scanner skill now states the two sequencing rules that cost a cycle in practice: **a scan
+  invalidates the recorded review** (scope digest plus source hashes), and **a finding is reopened by
+  any later edit to its file** — so scan after the last edit and record `fixed_pending_verification`
+  after the last edit to the file, not before.
+- **The installer now installs into a named profile.** A profile with its own `skills/` directory
+  shadows `~/.hermes/skills`, so `install.sh` reported success while the profile kept loading the old
+  copy — measured: the shared tree was 0.1.3 and the active profile still served 0.1.2. `--profile
+  NAME` (or `HERMES_PROFILE`) writes both locations and prints each one; without it the behaviour is
+  unchanged.
+- Tests: 12 cases, adding the `--all` path (three files, one call, review passes; the second call is an
+  error).
+
 ## v0.1.2 — a gate that cannot corrupt the commit it guards
 
 - New `check` command: read-only release gate. Exit 0 when the review is valid for the current HEAD and
