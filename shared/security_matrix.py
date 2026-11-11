@@ -13,8 +13,10 @@ def root_dir(value):
     git(p,'rev-parse','--show-toplevel')
     return Path(git(p,'rev-parse','--show-toplevel'))
 
-def db(root):
-    folder=root/'.security';folder.mkdir(exist_ok=True)
+def db(root,create=True):
+    folder=root/'.security'
+    if not create and not (folder/'security.db').is_file():return None
+    folder.mkdir(exist_ok=True)
     c=sqlite3.connect(folder/'security.db',timeout=30)
     c.row_factory=sqlite3.Row
     c.execute('PRAGMA journal_mode=WAL')
@@ -52,13 +54,28 @@ def files(root,mode,base,include_generated=False):
                   and (include_generated or not generated(x))
                   and (root/x).is_file())
 
-def render(root,c):
-    rows=c.execute('SELECT * FROM findings ORDER BY CASE severity WHEN "critical" THEN 0 WHEN "high" THEN 1 WHEN "medium" THEN 2 ELSE 3 END,id').fetchall()
+def evaluate(root,c):
+    """Read-only verdict: what the gate decides and why. Never writes anything."""
+    head=git(root,'rev-parse','HEAD')
+    if c is None:
+        return {'valid':False,'pending':0,'unresolved':0,'head':head,'latest':None,'findings':[],'reason':'no security ledger in this clone (.security/security.db) — run a scan first'}
     pending=c.execute('SELECT COUNT(*) FROM scope WHERE status="pending"').fetchone()[0]
     unresolved=c.execute("SELECT COUNT(*) FROM findings WHERE status NOT IN ('verified_fixed','integration_verified','false_positive')").fetchone()[0]
     latest=c.execute('SELECT * FROM reviews ORDER BY id DESC LIMIT 1').fetchone()
-    head=git(root,'rev-parse','HEAD')
-    valid=bool(latest and latest['status']=='passed' and latest['commit_sha']==head and latest['scope_digest']==snapshot(root,c) and unresolved==0 and pending==0)
+    matches=bool(latest and latest['scope_digest']==snapshot(root,c))
+    valid=bool(latest and latest['status']=='passed' and latest['commit_sha']==head and matches and unresolved==0 and pending==0)
+    if valid: reason=f'review valid for {head[:12]}'
+    elif latest is None: reason='no integration review recorded'
+    elif latest['status']!='passed': reason=f'the last review was recorded as {latest["status"]}'
+    elif latest['commit_sha']!=head: reason=f'the last review covers {latest["commit_sha"][:12]} but HEAD is {head[:12]}'
+    elif unresolved or pending: reason=f'{unresolved} open finding(s), {pending} unreviewed scope entr(ies)'
+    else: reason='the tree changed since the review (a source hash in scope moved)'
+    return {'valid':valid,'pending':pending,'unresolved':unresolved,'head':head,'latest':latest,'findings':[],'reason':reason}
+
+def render(root,c):
+    state=evaluate(root,c)
+    rows=c.execute('SELECT * FROM findings ORDER BY CASE severity WHEN "critical" THEN 0 WHEN "high" THEN 1 WHEN "medium" THEN 2 ELSE 3 END,id').fetchall()
+    pending,unresolved,head,valid=state['pending'],state['unresolved'],state['head'],state['valid']
     lines=['# SECURITY_MATRIX.md','','Generated from `.security/security.db`. Do not edit directly.','',f'- Git HEAD: `{head}`',f'- Unreviewed scope entries: **{pending}**',f'- Unresolved findings: **{unresolved}**',f'- Integration review: **{"VALID" if valid else "REQUIRED"}**','','| ID | Severity | Location | Finding | Status |','|---|---|---|---|---|']
     for r in rows:
         safe=lambda x:str(x).replace('|','\\|').replace('\n',' ')
@@ -84,8 +101,9 @@ def main():
     s=sub.add_parser('transition');s.add_argument('id');s.add_argument('--status',required=True,choices=['needs_validation','confirmed','in_remediation','fixed_pending_verification','verified_fixed','integration_verified','false_positive','accepted_risk','reopened']);s.add_argument('--actor',required=True);s.add_argument('--note',required=True)
     s=sub.add_parser('scope-reviewed');s.add_argument('--run',type=int,required=True);s.add_argument('--path',required=True);s.add_argument('--actor',required=True)
     s=sub.add_parser('review');s.add_argument('--status',choices=['passed','failed'],required=True);s.add_argument('--reviewer',required=True);s.add_argument('--note',required=True)
+    s=sub.add_parser('check',help='read-only release gate: exit 0 when the review is valid, 1 when not');s.add_argument('--json',action='store_true');s.add_argument('--quiet',action='store_true')
     sub.add_parser('status')
-    args=a.parse_args();root=root_dir(args.repo);c=db(root)
+    args=a.parse_args();root=root_dir(args.repo);c=db(root,create=args.cmd not in ('status','check'))
     try:
         if args.cmd=='scan':
             head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base,args.include_generated)
@@ -140,16 +158,30 @@ def main():
             if args.status=='passed' and (unresolved or pending):raise ValueError(f'Cannot pass: {unresolved} unresolved, {pending} unreviewed scope entries')
             c.execute('INSERT INTO reviews(commit_sha,scope_digest,status,reviewer,note,created_at) VALUES(?,?,?,?,?,?)',(git(root,'rev-parse','HEAD'),snapshot(root,c),args.status,args.reviewer,args.note,now()))
             c.commit();render(root,c);print('review recorded:',args.status)
-        elif args.cmd=='status':
-            valid=render(root,c)
-            latest=c.execute('SELECT commit_sha,status,reviewer,created_at FROM reviews ORDER BY id DESC LIMIT 1').fetchone()
-            head=git(root,'rev-parse','HEAD')
-            print(json.dumps({'valid_integration_review':valid,'head':head,
-                'latest_review':dict(latest) if latest else None,
-                'review_applies_to_head':bool(latest and latest['commit_sha']==head),
-                'findings':[dict(x) for x in c.execute('SELECT id,path,symbol,severity,status FROM findings ORDER BY id')],
-                'unreviewed_scope':[dict(x) for x in c.execute('SELECT run_id,path FROM scope WHERE status="pending"')]},indent=2))
-    finally:c.close()
+        elif args.cmd in ('status','check'):
+            # Both are read-only: a command that answers "is this committable?" must not rewrite the
+            # tree it is asked about. Documents are written by the mutating commands instead.
+            state=evaluate(root,c)
+            findings=[dict(x) for x in c.execute('SELECT id,path,symbol,severity,status FROM findings ORDER BY id')] if c else []
+            unreviewed=[dict(x) for x in c.execute('SELECT run_id,path FROM scope WHERE status="pending"')] if c else []
+            latest=state['latest']
+            payload={'valid_integration_review':state['valid'],'head':state['head'],
+                     'reason':state['reason'],
+                     'latest_review':dict(latest) if latest else None,
+                     'review_applies_to_head':bool(latest and latest['commit_sha']==state['head']),
+                     'unreviewed_scope_count':state['pending'],'unresolved_count':state['unresolved'],
+                     'findings':findings,'unreviewed_scope':unreviewed}
+            if args.cmd=='check':
+                if not args.quiet:
+                    if args.json:
+                        print(json.dumps(payload,indent=2))
+                    else:
+                        # stderr: the gate runs inside git, where stdout is not the developer's terminal.
+                        print(f"security gate: {'pass — ' if state['valid'] else 'BLOCKED — '}{state['reason']}",file=sys.stderr)
+                sys.exit(0 if state['valid'] else 1)
+            print(json.dumps(payload,indent=2))
+    finally:
+        if c is not None:c.close()
 if __name__=='__main__':
     try:main()
     except (ValueError,RuntimeError,sqlite3.Error) as e:print(f'ERROR: {e}',file=sys.stderr);sys.exit(2)

@@ -127,5 +127,67 @@ class Scope(Base):
         self.assertIn('imcui/package-lock.json', with_generated)
 
 
+class Gate(Base):
+    """`check` is what the pre-commit hook runs: read-only, and honest about why it blocks."""
+
+    def test_check_is_read_only_and_blocks_without_a_ledger(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        r = self.run_cli('check')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('no security ledger', r.stderr)
+        self.assertFalse((self.p / '.security').exists(), 'check created a ledger')
+        self.assertFalse((self.p / 'SECURITY_MATRIX.md').exists(), 'check wrote the matrix')
+
+    def test_status_does_not_write_either(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        self.ok('status')
+        self.assertFalse((self.p / '.security').exists())
+        self.assertFalse((self.p / 'SECURITY_MATRIX.md').exists())
+
+    def test_check_passes_then_blocks_when_head_moves(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        self.write('A.cs', 'class A { int x; }')
+        self.ok('scan')
+        self.ok('scope-reviewed', '--run', '1', '--path', 'A.cs', '--actor', 'scanner')
+        self.ok('review', '--status', 'passed', '--reviewer', 'validator', '--note', 'read it')
+        self.ok('check')
+
+        git(self.d, 'add', 'A.cs')
+        git(self.d, 'commit', '-qm', 'change')
+        blocked = self.run_cli('check')
+        self.assertEqual(blocked.returncode, 1)
+        self.assertIn('HEAD is', blocked.stderr)
+
+    def test_check_blocks_when_the_scope_hash_moved(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        self.write('A.cs', 'class A { int x; }')
+        self.ok('scan')
+        self.ok('scope-reviewed', '--run', '1', '--path', 'A.cs', '--actor', 'scanner')
+        self.ok('review', '--status', 'passed', '--reviewer', 'validator', '--note', 'read it')
+        # Same HEAD, different bytes on disk: the digest has to notice.
+        self.write('A.cs', 'class A { int y; }')
+        r = self.run_cli('check')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('source hash', r.stderr)
+
+    def test_check_json_payload_reports_the_reason(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        r = self.run_cli('check', '--json')
+        self.assertEqual(r.returncode, 1)
+        payload = json.loads(r.stdout)
+        self.assertFalse(payload['valid_integration_review'])
+        self.assertIn('no security ledger', payload['reason'])
+
+
 if __name__ == '__main__':
     unittest.main()

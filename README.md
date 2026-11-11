@@ -28,7 +28,8 @@ SM=~/.hermes/security-tools/security_matrix.py
 python3 $SM --repo /path/to/project scan --mode incremental   # changed files + untracked
 python3 $SM --repo /path/to/project scan --mode full          # whole tree, explicit request only
 python3 $SM --repo /path/to/project scan --base origin/main   # compare against a committed baseline
-python3 $SM --repo /path/to/project status                    # JSON: coverage + review validity
+python3 $SM --repo /path/to/project status                    # JSON: coverage + review validity (read-only)
+python3 $SM --repo /path/to/project check                     # exit 0 when committable, 1 when not
 ```
 
 `scan` only prepares the scope; **the agent must inspect every path returned** and then record what it
@@ -60,7 +61,11 @@ bash scripts/install-hook.sh /path/to/project
 ```
 
 The hook **blocks a commit unless the security review is valid** for the tree being committed; it
-performs no analysis. Two behaviours worth knowing before you install it:
+performs no analysis. Its body is one call — `security_matrix.py check` — which is read-only by
+construction: a command that answers "is this committable?" must not rewrite the tree in the middle of
+a commit. `status` is read-only too; the documents (`SECURITY_MATRIX.md`,
+`.security/REMEDIATION_STATUS.md`, `.security/FINAL_SECURITY_REVIEW.md`) are written by the commands
+that change state (`scan`, `finding`, `transition`, `scope-reviewed`, `review`). Two behaviours worth knowing before you install it:
 
 - **A review is consumed by the commit it covers.** The validity check is tied to the Git HEAD and to
   the source hashes in scope, so committing moves HEAD and the next commit needs a new review. That is

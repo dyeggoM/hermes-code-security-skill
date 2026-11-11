@@ -1,7 +1,7 @@
 ---
 name: hermes-security-scanner
 description: Incrementally review changed C#/.NET code for security risks, record evidence-backed candidates and maintain SECURITY_MATRIX.md; full audits on request.
-version: 0.1.1
+version: 0.1.2
 metadata:
   hermes:
     category: software-development

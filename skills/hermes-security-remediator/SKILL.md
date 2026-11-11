@@ -1,7 +1,7 @@
 ---
 name: hermes-security-remediator
 description: Independently validate security candidates and remediate confirmed vulnerabilities with regression tests and tracked states.
-version: 0.1.1
+version: 0.1.2
 metadata:
   hermes:
     category: software-development

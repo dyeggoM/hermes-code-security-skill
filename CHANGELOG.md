@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.2 — a gate that cannot corrupt the commit it guards
+
+- New `check` command: read-only release gate. Exit 0 when the review is valid for the current HEAD and
+  the tree, 1 when not, with a one-line reason on stderr (`--json` for machines, `--quiet` for silence).
+  This is the fix for D-6: the pre-commit hook used to run `status`, which rewrote `SECURITY_MATRIX.md`
+  and `.security/` *during* the commit — modifying the worktree after staging is exactly how a gate
+  corrupts what it is guarding.
+- `status` is now read-only too, and no longer creates `.security/` on a clone that never ran a scan. The
+  three documents are written only by the commands that change state.
+- `install-hook.sh` installs a three-line hook that execs `check`; a missing CLI now warns and allows the
+  commit instead of blocking everything (a local tool that is not installed must not stop work — the
+  same rule the inventory hook follows).
+- Tests: 11 cases, adding read-only assertions for `check` and `status`, the HEAD-moved block, the
+  source-hash-moved block and the `--json` payload.
+
 ## v0.1.1 — fixes from the first real run
 
 Everything here comes from `TEST-REPORT.md`; the defect ids match it.
