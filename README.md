@@ -38,12 +38,40 @@ python3 $SM --repo /path/to/project status                    # JSON: coverage +
 python3 $SM --repo /path/to/project check                     # exit 0 when committable, 1 when not
 ```
 
-`scan` only prepares the scope; **the agent must inspect every path returned** and then record what it
-found:
+`scan` only prepares the scope. It is the **scout** pass that decides what is worth reading, because
+reading everything is how an audit becomes arbitrary:
 
 ```bash
+# scout: name a target, say who can reach it and why it matters
+python3 $SM --repo . target-add --title "Attachment upload path" \
+  --path IMCAPI/Controllers/Controllers.cs --path IMCAPI/Services/AttachmentStorage.cs \
+  --reachability operador --relevance "writes attacker-named files to disk" \
+  --priority high --actor scout-agent
+
+# analyst: read that target, record candidates against it, then close it
 python3 $SM --repo . finding --path A.cs --symbol A.Run \
-  --title "..." --severity high --description "..." --evidence "A.cs:42 ..." --actor scanner-agent
+  --title "..." --severity high --description "..." --evidence "A.cs:42 ..." \
+  --target T-XXXXXXXX --actor scanner-agent
+python3 $SM --repo . target-close T-XXXXXXXX --status audited --actor scanner-agent \
+  --note "read Upload, ApplyUploadAsync, SaveAsync; sinks checked"
+```
+
+This two-pass split is the lesson from OpenAI's Linux kernel sweep (`a-thousand-fewer-paths-to-root`
+on openai.com): 40M lines → 5,034 audit targets (~7% of the code) for $3,426, then 2,308 candidates
+for $316,549, then a triage agent that *reproduced* 74.7% of them before anyone called them bugs. The
+selection step is 1% of the cost and decides the quality of everything after it. The concrete
+heuristics for this stack — reachability table, relevance triggers, sizing, worked example — are in
+`skills/hermes-security-scanner/references/scout-playbook.md`.
+
+An open target blocks a passing review exactly like an unreviewed file does, and `dismissed` needs a
+reason that names the missing link.
+
+A candidate is a claim. It becomes `confirmed` only when the remediator reproduces it in a sandbox and
+puts the request and the observed output in the note:
+
+```bash
+python3 $SM --repo . transition SEC-ABCDEF123456 --status confirmed --actor verifier-agent \
+  --note "repro: POST ... -> 500, file left on disk (ls)"
 python3 $SM --repo . scope-reviewed --run 1 --path A.cs --actor scanner-agent
 python3 $SM --repo . scope-reviewed --run 1 --all --actor scanner-agent   # every pending path of that run
 python3 $SM --repo . check                                               # read-only gate: exit 0 committable, 1 blocked
