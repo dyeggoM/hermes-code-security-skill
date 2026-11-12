@@ -208,5 +208,75 @@ class Gate(Base):
         self.assertIn('no security ledger', payload['reason'])
 
 
+class Targets(Base):
+    """The scout stage: a scope is not an audit until it has named, reachable targets."""
+
+    def _scan_repo_read_pass(self):
+        self.write('A.cs', 'class A {}')
+        self.write('B.cs', 'class B {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        self.write('A.cs', 'class A { int x; }')
+        run = json.loads(self.ok('scan').stdout)['run']
+        self.ok('scope-reviewed', '--run', str(run), '--all', '--actor', 'scanner')
+        return run
+
+    def test_an_open_target_blocks_the_gate(self):
+        self._scan_repo_read_pass()
+        tid = self.ok('target-add', '--title', 'Read path', '--path', 'A.cs',
+                      '--reachability', 'anonymous', '--relevance', 'path handling',
+                      '--priority', 'high', '--actor', 'scout').stdout.strip()
+        self.assertTrue(tid.startswith('T-'))
+        blocked = self.run_cli('check')
+        self.assertEqual(blocked.returncode, 1)
+        self.assertIn('BLOCKED', blocked.stderr)
+
+        # Closing the target is what makes the review recordable at all; then the gate opens.
+        self.ok('target-close', tid, '--status', 'audited', '--actor', 'analyst', '--note', 'read all of it')
+        self.ok('review', '--status', 'passed', '--reviewer', 'validator', '--note', 'target audited')
+        self.ok('check')
+
+    def test_findings_link_back_to_their_target(self):
+        self._scan_repo_read_pass()
+        tid = self.ok('target-add', '--title', 'Read path', '--path', 'A.cs',
+                      '--reachability', 'anonymous', '--relevance', 'path handling',
+                      '--priority', 'high', '--actor', 'scout').stdout.strip()
+        fid = self.ok('finding', '--path', 'A.cs', '--symbol', 'A.Read', '--title', 't', '--severity', 'high',
+                      '--description', 'd', '--evidence', 'A.cs:1', '--actor', 'analyst',
+                      '--target', tid).stdout.strip()
+        status = json.loads(self.ok('status').stdout)
+        self.assertEqual([f['target_id'] for f in status['findings']], [tid])
+        self.assertIn('| ' + tid, (self.p / 'SECURITY_MATRIX.md').read_text())
+        self.assertIn(fid, (self.p / 'SECURITY_MATRIX.md').read_text())
+
+    def test_unknown_target_and_outside_paths_are_rejected(self):
+        self._scan_repo_read_pass()
+        r = self.run_cli('finding', '--path', 'A.cs', '--symbol', 'A', '--title', 't', '--severity', 'low',
+                         '--description', 'd', '--evidence', 'e', '--actor', 'a', '--target', 'T-NOPE')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('Unknown audit target', r.stderr)
+        r = self.run_cli('target-add', '--title', 'x', '--path', '../evil.cs', '--reachability', 'anon',
+                         '--relevance', 'r', '--priority', 'low', '--actor', 's')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('outside repository', r.stderr)
+
+    def test_duplicate_target_is_rejected(self):
+        self._scan_repo_read_pass()
+        args = ('target-add', '--title', 'Read path', '--path', 'A.cs', '--reachability', 'anonymous',
+                '--relevance', 'path handling', '--priority', 'high', '--actor', 'scout')
+        self.ok(*args)
+        r = self.run_cli(*args)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('already recorded', r.stderr)
+
+    def test_a_review_pass_requires_closed_targets(self):
+        self._scan_repo_read_pass()
+        self.ok('target-add', '--title', 'Read path', '--path', 'A.cs', '--reachability', 'anonymous',
+                '--relevance', 'path handling', '--priority', 'high', '--actor', 'scout')
+        r = self.run_cli('review', '--status', 'passed', '--reviewer', 'v', '--note', 'n')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('open audit targets', r.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()

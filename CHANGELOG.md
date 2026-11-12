@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.2.0 — scout, analyst, reproduce
+
+The workflow now follows the pipeline OpenAI described for its Linux kernel sweep
+(https://openai.com/index/a-thousand-fewer-paths-to-root/): pick audit targets by reachability and
+security relevance, analyse only those, then reproduce before believing anything. That run chose 5,034
+targets (~7% of 40M lines) for $3,426 and produced 2,308 candidates for $316,549 — the cheap step
+decides the expensive one.
+
+- **Audit targets are a first-class object.** `target-add` records a target with the paths it covers,
+  the principal who can reach it, why it is security-relevant and a priority; `target-close` records
+  `audited` or `dismissed` with a note. Findings take an optional `--target`, so every candidate traces
+  back to the decision that sent someone to look at it.
+- **The gate counts open targets.** `review --status passed` refuses while a target is open, and
+  targets are part of the review digest: adding one invalidates a review recorded before it.
+- **`SECURITY_MATRIX.md` opens with the target table**, so a reviewer sees what was chosen and what was
+  deliberately skipped before reading a single finding.
+- **Scanner skill split into two passes.** Scout (structural, cheap, no findings) and analyst (one
+  target at a time, under ~3,000 lines, findings with `file:line` evidence). New
+  `references/scout-playbook.md`: reachability table for an ASP.NET/Vue stack, the triggers that make a
+  file a target, sizing, a worked example, and the lessons from the source run.
+- **Remediator confirms by reproduction.** A candidate becomes `confirmed` only with a probe that
+  exercises the path and the observed output in the note; not reproducing is a `false_positive` with
+  the measured reason, and two attempts without progress is the stop rule.
+- **Validator verifies the path, not the state.** Re-run the original reproduction and confirm it fails
+  for the right reason, then read the patch as an attacker: bypassable, sibling variants, legitimate
+  paths broken.
+- Schema: `targets` table plus a nullable `findings.target_id`, migrated in place with `ALTER TABLE` so
+  existing ledgers keep working.
+- Tests: 17 cases, adding the target lifecycle, target-linked findings, rejection of unknown targets
+  and out-of-repo paths, and the gate refusing a pass with an open target.
+
 ## v0.1.3 — a scope you can clear in one call, and the two rules that bite first
 
 From driving the tool on `InventoryManagementContainers` (28 changed paths in one run).
