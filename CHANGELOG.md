@@ -1,5 +1,51 @@
 # Changelog
 
+## v0.4.0 — the lessons of a real audit round
+
+Merged back from the skills that were being refined inside a bot team during a live audit of a
+FastAPI + nginx service. Everything here was learned by hitting it, not by reading about it; the
+project vocabulary was stripped, the rules kept.
+
+### Scanner
+- **Check the scan covers the repo's primary language before scouting.** A scan that returns only
+  JSON/YAML/HTML for a Python service means the extension list is wrong, and every later pass is
+  theatre over 0% of the code. Count by extension, fix the constant, re-scan, confirm the count moved.
+- **Requirements handouts are their own pass.** New section on turning an external checklist into a
+  gap table — read the requirement literally and check the layer it lands in (middleware vs proxy),
+  accept a stronger implementation as `ok` with the deviation named, and list the rows that are owner
+  decisions rather than defects. Depth in `references/web-hardening.md`: the two nginx `add_header`
+  inheritance traps, CSP-by-header with the inline-script hash recipe, `security.txt`, the export
+  endpoint, certificate arithmetic, and what a workstation cannot answer.
+- **Environment-name gates.** A check keyed to `env == "production"` instead of a `production_like`
+  predicate fails open on the staging box wired to real providers — the deployment that gets probed.
+- **Batching.** Runs of 6-8 targets ordered by reachability; a run that hits its budget mid-target
+  reports the target it stopped on, instead of buying breadth and no depth.
+- **Fail-closed is not a defect because it is inconvenient.** Grep the corpus for the assertions that
+  encode the intent before proposing to relax a gate; if a docstring or a test names the trade, the
+  candidate is `false_positive` and the behaviour stays. The same rule applies to tightenings: the
+  innocent corpus has to stay green, not just the motivating bypass.
+- **Word-list gates need a shape, not more words**, and a `Content-Length` check inside a handler runs
+  after the framework already read the body (move it to middleware).
+- **Ledger etiquette**: who moves each transition, why a partial fix is not `false_positive`, and why
+  `accepted_risk` keeps the gate red — plus grouping candidates by root cause instead of by id.
+
+### Remediator
+- **Respect the invariants the database enforces** — terminal-state triggers, a service method that
+  accepts more states than the trigger, and unique keys that forbid the obvious workaround. When the
+  constraint blocks the brief, the design changes, never the constraint.
+- **Dedupe and idempotency keys**: the signed field is usually not unique, so a key moved to it
+  collapses the chain (a refund swallowed as a duplicate). Test the chain, not the replay; when no
+  per-event signature exists, bound the residual and record `accepted_risk`.
+
+### Validator
+- **Prove a file out of scope instead of reading it** — not deployed, byte-identical to upstream,
+  unreachable from production, trivial by construction — and put the breakdown in the review note.
+- **Attack the vocabulary, not only the branch**: a text gate's condition gets fixed while its lexicon
+  stays, so sweep synonyms, shapes and the inverse (innocent) corpus, and report the class as a new
+  finding even when the original id is closed.
+- **A fix can buy security with correctness**: two legitimate events that must stay distinct, traced
+  end to end through the rows they produce.
+
 ## v0.3.0 — portable: no project baked into the skill
 
 The skills were written against two real repositories and carried their vocabulary: role names from
