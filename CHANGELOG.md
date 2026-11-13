@@ -1,9 +1,34 @@
 # Changelog
 
+## v0.3.0 — portable: no project baked into the skill
+
+The skills were written against two real repositories and carried their vocabulary: role names from
+one auth matrix, paths from one API, a point-in-time report about one codebase. That makes them read
+like documentation for those repos instead of a tool. This release removes the project and keeps the
+method.
+
+- **Portable reachability scale**, documented once and used everywhere: `anonymous` → `user` →
+  `privileged` → `process`. Each stack gets a pattern table (.NET attributes and policies, Python
+  decorators/`Depends`/Django guards, Node guards and route handlers), so a project maps its own role
+  names onto the scale instead of inheriting someone else's.
+- **New section: first pass in a repo you have never seen** — four questions answered from
+  configuration (entry points, role ladder, what ships to the client, the project's own test command)
+  before the first target is recorded.
+- **Every example is neutral**: `src/api/uploads.py`, `src/Api/Controllers/UploadsController.cs`,
+  `web/src/services/api.ts`, generic test names. Same for the test fixtures.
+- **The point-in-time report is gone.** `TEST-REPORT.md` described one repository's audit; its lessons
+  are in the CHANGELOG and the playbook, and git history keeps the original.
+- CLI `--reachability` help text describes the scale instead of listing one project's roles;
+  `version` is 0.3.0.
+- Tests still 22, unchanged in behaviour, renamed fixtures.
+
+The lesson worth keeping: a skill that quotes one project's names becomes unusable on the next one,
+and the agent copying those names into a new ledger is the failure mode.
+
 ## v0.2.1 — Python is source too
 
-Found while auditing `aurora-companion-renewed` (400 `.py` files): `scan --mode full` returned **92
-paths and zero Python files**. The Python support that made that audit possible existed only in
+Found while auditing a 400-file Python API: `scan --mode full` returned **92 paths and zero Python
+files**. The Python support that made that audit possible existed only in
 `~/.hermes/security-tools/security_matrix.py`, patched in place and never committed — so a fresh
 install, another machine, or the next profile got the Python-blind version and nobody would notice
 until the scope came back empty.
@@ -59,7 +84,7 @@ decides the expensive one.
 
 ## v0.1.3 — a scope you can clear in one call, and the two rules that bite first
 
-From driving the tool on `InventoryManagementContainers` (28 changed paths in one run).
+From driving the tool on a .NET 9 + Quasar service (28 changed paths in one run).
 
 - `scope-reviewed --all`: marks every pending path of a run in one command. Clearing a 28-path scope
   was 28 invocations of a CLI with a `--path` that has to be typed exactly; a single mistyped path left
@@ -94,7 +119,8 @@ From driving the tool on `InventoryManagementContainers` (28 changed paths in on
 
 ## v0.1.1 — fixes from the first real run
 
-Everything here comes from `TEST-REPORT.md`; the defect ids match it.
+Everything here comes from the first verification run recorded in the commit history; the defect ids
+match it.
 
 ### Install
 - **D-1** `scripts/install.sh` replaces the README recipe. The old one could never work: Hermes does
