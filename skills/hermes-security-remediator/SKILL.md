@@ -1,11 +1,11 @@
 ---
 name: hermes-security-remediator
 description: Reproduce security candidates before confirming them, then fix the confirmed ones with regression tests.
-version: 0.2.1
+version: 0.3.0
 metadata:
   hermes:
     category: software-development
-    tags: [security, remediation, csharp, python]
+    tags: [security, remediation, polyglot]
 ---
 # Security Remediator
 Read `SECURITY_MATRIX.md`, `.security/REMEDIATION_STATUS.md` and the audit target each candidate came from. Then **reproduce before believing it**.
@@ -16,7 +16,7 @@ For every `needs_validation` candidate, build the smallest probe that exercises 
 ```bash
 python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXXXXXX \
   --status confirmed --actor verifier-agent \
-  --note "repro: POST /api/attachment/upload itemId=9999 -F file=@x.bin -> 500 FK; media/items/9999/x.bin left on disk (ls)"
+  --note "repro: POST /api/uploads item_id=999999 -F file=@x.bin -> 500 FK; media/999999/x.bin left on disk (ls)"
 ```
 
 - Reproduced → `confirmed`, with the request and the observed output in the note.
@@ -24,12 +24,12 @@ python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXX
 - Cannot drive it inside the budget → leave it `needs_validation` and say what is missing. Two honest attempts with no progress is the stop rule: record what was tried and move on.
 
 ## Fix the confirmed ones
-Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Run the project's own commands, not a guess: `dotnet build` + `dotnet test <csproj>` for .NET, `pytest -q <path>::<test>` + `ruff check` + `mypy` (if configured) for Python, `npm test` + `npm run typecheck` for a Quasar/Vue app. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
+Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Run the project's own commands, read from its manifest rather than guessed: `dotnet build` + `dotnet test <csproj>` for .NET, `pytest -q <path>::<test>` + `ruff check` + `mypy` (if configured) for Python, whatever `scripts.test` declares in `package.json` for a JS/TS app. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
 
 ```bash
 python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXXXXXX \
   --status fixed_pending_verification --actor fix-agent \
-  --note "guard at Controllers.cs:357; Upload_WithMissingItem_ReturnsBadRequest green; both write paths audited"
+  --note "guard added at uploads.py:88; test_upload_with_missing_parent_returns_400 green; both write paths audited"
 ```
 
 Record `fixed_pending_verification` **after** the last edit to that file: findings are keyed to the file's SHA-256, so editing afterwards reopens the finding and your state was a lie.

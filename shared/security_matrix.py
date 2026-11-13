@@ -14,7 +14,7 @@ is or what a bug is.
 import argparse, datetime, hashlib, json, sqlite3, subprocess, sys
 from pathlib import Path
 
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 SEVERITIES = ('critical', 'high', 'medium', 'low')
 
 def git(root,*args):
@@ -168,7 +168,7 @@ def main():
     s=sub.add_parser('target-add',help='Scout output: record one audit target before analysing it')
     s.add_argument('--title',required=True)
     s.add_argument('--path',required=True,dest='paths',action='append',help='repeat for every path or path:start-end range in the target')
-    s.add_argument('--reachability',required=True,help='who can trigger it: anonymous, lector, operador, admin, superadmin')
+    s.add_argument('--reachability',required=True,help='who can trigger it, on a portable scale: anonymous < user < privileged < process (map your project roles onto it)')
     s.add_argument('--relevance',required=True,help='why it is security-relevant: auth boundary, file write, raw SQL, token lifetime...')
     s.add_argument('--priority',choices=['high','medium','low'],required=True)
     s.add_argument('--actor',required=True);s.add_argument('--note',default='')

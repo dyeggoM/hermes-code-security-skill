@@ -43,9 +43,9 @@ reading everything is how an audit becomes arbitrary:
 
 ```bash
 # scout: name a target, say who can reach it and why it matters
-python3 $SM --repo . target-add --title "Attachment upload path" \
-  --path IMCAPI/Controllers/Controllers.cs --path IMCAPI/Services/AttachmentStorage.cs \
-  --reachability operador --relevance "writes attacker-named files to disk" \
+python3 $SM --repo . target-add --title "Upload path" \
+  --path src/api/uploads.py --path src/api/storage.py \
+  --reachability user --relevance "writes caller-named files to disk" \
   --priority high --actor scout-agent
 
 # analyst: read that target, record candidates against it, then close it
@@ -131,5 +131,5 @@ agents run the scanner after each task.
 - Independent assignment (a different agent to confirm, to fix, to verify) is a workflow contract
   between skills, not something the CLI can enforce.
 
-See `TEST-REPORT.md` for the verification run that produced this version, including the defects that
-were fixed here and the ones still open.
+The CHANGELOG records what each release fixed and why, including the defects found by running the tool
+on real repositories.

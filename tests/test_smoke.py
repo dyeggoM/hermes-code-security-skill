@@ -128,22 +128,22 @@ class Scope(Base):
         self.assertIn('superseded', r.stderr)
 
     def test_scope_covers_the_front_end_and_skips_generated_files(self):
-        self.write('imcui/src/services/api.ts', 'export const x = 1;\n')
-        self.write('imcui/src/pages/Home.vue', '<template><div/></template>\n')
+        self.write('web/src/services/api.ts', 'export const x = 1;\n')
+        self.write('web/src/pages/Home.vue', '<template><div/></template>\n')
         self.write('scripts/dev.sh', 'echo hi\n')
-        self.write('IMCAPI/Migrations/20260101000000_Initial.cs', 'class M {}\n')
-        self.write('IMCAPI/DB/Models.cs', 'class Models {}\n')
-        self.write('imcui/package-lock.json', '{"lockfileVersion": 3}\n')
+        self.write('src/Api/Migrations/20260101000000_Initial.cs', 'class M {}\n')
+        self.write('src/Api/Models.cs', 'class Models {}\n')
+        self.write('web/package-lock.json', '{"lockfileVersion": 3}\n')
         git(self.d, 'add', '.')
         git(self.d, 'commit', '-qm', 'init')
 
         paths = json.loads(self.ok('scan', '--mode', 'full').stdout)['paths']
-        self.assertEqual(paths, ['IMCAPI/DB/Models.cs', 'imcui/src/pages/Home.vue',
-                                 'imcui/src/services/api.ts', 'scripts/dev.sh'])
+        self.assertEqual(paths, ['scripts/dev.sh', 'src/Api/Models.cs', 'web/src/pages/Home.vue',
+                                 'web/src/services/api.ts'])
 
         with_generated = json.loads(self.ok('scan', '--mode', 'full', '--include-generated').stdout)['paths']
-        self.assertIn('IMCAPI/Migrations/20260101000000_Initial.cs', with_generated)
-        self.assertIn('imcui/package-lock.json', with_generated)
+        self.assertIn('src/Api/Migrations/20260101000000_Initial.cs', with_generated)
+        self.assertIn('web/package-lock.json', with_generated)
 
 
 class Gate(Base):
