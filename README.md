@@ -135,3 +135,8 @@ agents run the scanner after each task.
 
 The CHANGELOG records what each release fixed and why, including the defects found by running the tool
 on real repositories.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Copyright (c) 2023 Juan Diego Morales del Corral. Each skill directory
+carries a copy, so a skill installed on its own keeps its license.
