@@ -14,6 +14,7 @@ is or what a bug is.
 import argparse, datetime, hashlib, json, sqlite3, subprocess, sys
 from pathlib import Path
 
+VERSION = '0.2.1'
 SEVERITIES = ('critical', 'high', 'medium', 'low')
 
 def git(root,*args):
@@ -53,22 +54,35 @@ def source_hash(root,path):
     return hashlib.sha256(f.read_bytes()).hexdigest()
 
 CODE_EXTENSIONS = ('.cs', '.csproj', '.json', '.config', '.yml', '.yaml', '.razor', '.cshtml',
-                   '.ts', '.tsx', '.js', '.mjs', '.cjs', '.vue', '.sh', '.ps1', '.sql', '.html')
+                   '.ts', '.tsx', '.js', '.mjs', '.cjs', '.vue', '.sh', '.ps1', '.sql', '.html',
+                   '.py', '.pyi', '.toml', '.ini')
 LOCKFILES = ('package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock')
+# Directories that never hold hand-written source: dependency caches, build output, tool state. The
+# .NET ones are here because a repo can carry both stacks, the Python ones because a virtualenv or a
+# __pycache__ inside the tree is thousands of files nobody audits.
+SKIP_DIRS = ('bin', 'obj', '.security', '.git', 'node_modules', '__pycache__', '.venv', 'venv',
+             '.mypy_cache', '.pytest_cache', '.ruff_cache', 'site-packages', 'dist', 'build')
+# Test trees do not ship, so they are not attack surface — except when the audit is about fixtures
+# (a committed secret, a credential baked into a sample). That case opts back in with --include-tests.
+TEST_DIRS = ('tests', 'test', '__tests__', 'spec')
 
 def generated(path):
     """Machine-written files nobody should review line by line."""
     name = path.rsplit('/', 1)[-1]
-    return name in LOCKFILES or 'Migrations' in path.split('/') or path.endswith('.Designer.cs') or path.endswith('.g.cs')
+    dirs = path.split('/')
+    return (name in LOCKFILES or 'Migrations' in dirs
+            or path.endswith('.Designer.cs') or path.endswith('.g.cs')
+            or ('alembic' in dirs and 'versions' in dirs))
 
-def files(root,mode,base,include_generated=False):
+def files(root,mode,base,include_generated=False,include_tests=False):
     if mode=='full':
         raw=git(root,'ls-files','--cached','--others','--exclude-standard').splitlines()
     else:
         raw=set(git(root,'diff','--name-only','HEAD').splitlines()+git(root,'ls-files','--others','--exclude-standard').splitlines())
         if base:raw|=set(git(root,'diff','--name-only',base,'HEAD').splitlines())
     return sorted(x for x in raw if x.endswith(CODE_EXTENSIONS)
-                  and not any(y in x.split('/') for y in ('bin','obj','.security','.git','node_modules'))
+                  and not any(y in x.split('/') for y in SKIP_DIRS)
+                  and (include_tests or not any(y in x.split('/') for y in TEST_DIRS))
                   and (include_generated or not generated(x))
                   and (root/x).is_file())
 
@@ -148,7 +162,9 @@ def snapshot(root,c):
 
 def main():
     a=argparse.ArgumentParser();a.add_argument('--repo',default='.');sub=a.add_subparsers(dest='cmd',required=True)
-    s=sub.add_parser('scan');s.add_argument('--mode',choices=['incremental','full'],default='incremental');s.add_argument('--base');s.add_argument('--include-generated',action='store_true',help='also scope lockfiles and EF migrations')
+    s=sub.add_parser('scan');s.add_argument('--mode',choices=['incremental','full'],default='incremental');s.add_argument('--base')
+    s.add_argument('--include-generated',action='store_true',help='also scope lockfiles, EF migrations and alembic versions')
+    s.add_argument('--include-tests',action='store_true',help='also scope tests/ trees (fixtures with baked-in credentials, for instance)')
     s=sub.add_parser('target-add',help='Scout output: record one audit target before analysing it')
     s.add_argument('--title',required=True)
     s.add_argument('--path',required=True,dest='paths',action='append',help='repeat for every path or path:start-end range in the target')
@@ -163,11 +179,17 @@ def main():
     s.add_argument('--path',help='one path of that run');s.add_argument('--all',action='store_true',help='every pending path of that run, for a scope you read in one pass');s.add_argument('--actor',required=True)
     s=sub.add_parser('review');s.add_argument('--status',choices=['passed','failed'],required=True);s.add_argument('--reviewer',required=True);s.add_argument('--note',required=True)
     s=sub.add_parser('check',help='read-only release gate: exit 0 when the review is valid, 1 when not');s.add_argument('--json',action='store_true');s.add_argument('--quiet',action='store_true')
+    sub.add_parser('version',help='print the CLI version — compare it with the repo you installed from')
     sub.add_parser('status')
-    args=a.parse_args();root=root_dir(args.repo);c=db(root,create=args.cmd not in ('status','check'))
+    args=a.parse_args()
+    # `version` must answer outside a git repository too: that is where you run it from when you are
+    # wondering whether the installed copy matches the one in the repo.
+    if args.cmd=='version':
+        print(VERSION);return
+    root=root_dir(args.repo);c=db(root,create=args.cmd not in ('status','check'))
     try:
         if args.cmd=='scan':
-            head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base,args.include_generated)
+            head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base,args.include_generated,args.include_tests)
             # A new scan supersedes the previous run's outstanding scope: keeping old pending rows
             # would block the gate forever on files a later run no longer lists.
             c.execute("UPDATE scope SET status='superseded' WHERE status='pending'")
@@ -254,7 +276,7 @@ def main():
             unreviewed=[dict(x) for x in c.execute('SELECT run_id,path FROM scope WHERE status="pending"')] if c else []
             targets=[dict(x) for x in c.execute('SELECT id,title,paths,reachability,relevance,priority,status FROM targets ORDER BY id')] if c else []
             latest=state['latest']
-            payload={'valid_integration_review':state['valid'],'head':state['head'],'reason':state['reason'],
+            payload={'version':VERSION,'valid_integration_review':state['valid'],'head':state['head'],'reason':state['reason'],
                      'latest_review':dict(latest) if latest else None,
                      'review_applies_to_head':bool(latest and latest['commit_sha']==state['head']),
                      'unreviewed_scope_count':state['pending'],'unresolved_count':state['unresolved'],

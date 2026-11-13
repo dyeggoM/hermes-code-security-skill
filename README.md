@@ -79,8 +79,17 @@ python3 $SM --repo . transition SEC-ABCDEF123456 --status confirmed --actor veri
 ```
 
 Scope covers `.cs .csproj .json .config .yml .yaml .razor .cshtml .ts .tsx .js .mjs .cjs .vue .sh
-.ps1 .sql .html`. Machine-written paths (EF `Migrations/`, `*.Designer.cs`, lockfiles, `bin`, `obj`,
-`node_modules`) are skipped; `scan --include-generated` opts them back in. Each new `scan` supersedes
+.ps1 .sql .html .py .pyi .toml .ini`. Skipped by default:
+
+- **caches and tool state** — `bin`, `obj`, `node_modules`, `__pycache__`, `.venv`, `venv`,
+  `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `site-packages`, `dist`, `build`;
+- **generated trees** — EF `Migrations/`, `*.Designer.cs`, `alembic/versions/`, lockfiles;
+- **`tests/`, `test/`, `__tests__/`, `spec/`** — test trees do not ship, so they are not attack surface.
+  On the 400-file Python project this was measured against, `tests/` was 269 files: a scope that large
+  is one nobody reads.
+
+`scan --include-tests` opts the test tree back in (audit fixtures: a committed secret, a credential
+baked into a sample) and `scan --include-generated` re-adds the generated trees. Each new `scan` supersedes
 the previous run's unreviewed entries, so a file left unread in run *N* does not block run *N+1*
 forever — but nothing in the tool can tell you the file was read, which is why `status` reports the
 count instead of assuming it.

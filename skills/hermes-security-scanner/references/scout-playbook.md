@@ -31,6 +31,22 @@ Read the route/attribute, not the intent. In an ASP.NET Core API the principal i
 | Background job, startup seeding, migration, interceptor | `process` — runs as the app, no request needed |
 | Vue/TS under `imcui/src` | `anonymous` if it ships in the bundle: the browser is the attacker's machine |
 
+### Python (FastAPI, Flask, Django, workers)
+
+| Evidence in the code | Reachability |
+|---|---|
+| `@app.get/post(...)` or `@router.*` with no `Depends(current_user)` | `anonymous` |
+| Route behind `Depends(require_user)` / `@login_required` / `LoginRequiredMixin` | authenticated user |
+| `Depends(require_admin)`-style guard, admin blueprint, Django `is_staff`/`is_superuser` | `admin` and up |
+| `middleware`, `@app.before_request`, ASGI wrapper | whatever the routes behind it allow — read the routes |
+| Celery/RQ task, APScheduler job, `startup`/`lifespan` hook, CLI entry point (`__main__`, `argparse`, Typer) | `process` |
+| Alembic migration, seed script, `scripts/*.py` run by ops | `process` — and usually privileged |
+| Front-end JS (`app/static/*.js`) | `anonymous`: the browser is the attacker's machine |
+
+In FastAPI the dependency tree is the authorization decision: `Depends(...)` at router level applies to
+every path under it, and one route that re-declares its own dependencies escapes the router's guard.
+Read the router `include_router(...)` call and the decorator together, not the handler alone.
+
 A target with `superadmin` reachability is a hardening item, not an urgent one: the attacker already
 has the keys. Weight the list the same way the kernel pipeline did — unprivileged reachability first.
 
@@ -55,9 +71,19 @@ A path is a target when attacker-influenced data meets one of these:
   that follows relations both ways.
 - **Logging and errors** — exception text or file paths returned to a client, log endpoints, audit
   rows that can be forged or skipped.
+- **Python-specific sinks** — `pickle.loads`, `yaml.load` without `SafeLoader`, `eval`/`exec`,
+  `subprocess` with `shell=True`, `os.system`, Jinja `Template(...).render` on user input,
+  `tarfile.extractall` / `zipfile.extractall` (zip-slip), `Path(...)` built from input, `requests` to a
+  URL from input (SSRF), `jwt.decode` without `algorithms=[...]` or with `verify=False`,
+  `hashlib.md5/sha1` for passwords, `random` for tokens instead of `secrets`, SQL built with f-strings
+  or `%`, `sqlite3` with `executescript` on input, framework debug flags (`debug=True`,
+  `DEBUG = True`) and default `SECRET_KEY` values.
 
 Conversely, most files are not targets, and saying so is the scout's job: DTO shapes, constants,
-styling, presentational Vue components with no data access, generated code, test helpers.
+styling, presentational Vue components with no data access, generated code, test helpers. That is why
+`scan` skips the `tests/` tree by default: on a 400-file Python repo it is 269 of the 400 files, and a
+scope that large is one nobody reads. Pass `--include-tests` only when the audit is about fixtures.
+The same reasoning drops `alembic/versions/` and EF `Migrations/`: schema history, not request surface.
 
 ## Sizing
 

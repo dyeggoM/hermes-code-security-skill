@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.2.1 — Python is source too
+
+Found while auditing `aurora-companion-renewed` (400 `.py` files): `scan --mode full` returned **92
+paths and zero Python files**. The Python support that made that audit possible existed only in
+`~/.hermes/security-tools/security_matrix.py`, patched in place and never committed — so a fresh
+install, another machine, or the next profile got the Python-blind version and nobody would notice
+until the scope came back empty.
+
+- **`.py`, `.pyi`, `.toml`, `.ini` in scope.** The whitelist was .NET/JS only; a Python repo was
+  invisible to the scanner.
+- **`SKIP_DIRS` replaces the hardcoded .NET list** and now also drops `__pycache__`, `.venv`, `venv`,
+  `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `site-packages`, `dist`, `build`.
+- **Test trees are skipped by default** (`tests/`, `test/`, `__tests__/`, `spec/`). They do not ship,
+  so they are not attack surface, and on the reference repo they were 269 of 400 files — a scope that
+  size is a scope nobody reads. `scan --include-tests` opts back in for fixture audits.
+- **`alembic/versions/` counts as generated**, the Python twin of EF `Migrations/`;
+  `--include-generated` re-adds it.
+- **Docs and prose stop assuming .NET**: the scanner scope paragraph, the playbook's reachability
+  table (FastAPI router/`Depends`/middleware/worker/CLI rows and a Python sink list: pickle, yaml,
+  subprocess, zip-slip, unverified `jwt.decode`, `random` for tokens, f-string SQL, debug flags), and
+  the build/test commands in the remediator and validator (pytest/ruff/mypy versus dotnet/npm).
+- Tests: 17 → 20, covering Python scope, the test-tree skip and its opt-in, and the alembic rule.
+
+Drift is the real defect this release fixes: an installed copy that diverges from the repo is a
+security tool running unversioned code.
+
 ## v0.2.0 — scout, analyst, reproduce
 
 The workflow now follows the pipeline OpenAI described for its Linux kernel sweep
