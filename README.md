@@ -61,7 +61,9 @@ on openai.com): 40M lines → 5,034 audit targets (~7% of the code) for $3,426, 
 for $316,549, then a triage agent that *reproduced* 74.7% of them before anyone called them bugs. The
 selection step is 1% of the cost and decides the quality of everything after it. The concrete
 heuristics for this stack — reachability table, relevance triggers, sizing, worked example — are in
-`skills/hermes-security-scanner/references/scout-playbook.md`.
+`skills/hermes-security-scanner/references/scout-playbook.md`; the mechanics for turning an external
+hardening checklist into a gap table (edge headers, CSP hashes, `security.txt`, certificate checks) are
+in `skills/hermes-security-scanner/references/web-hardening.md`.
 
 An open target blocks a passing review exactly like an unreviewed file does, and `dismissed` needs a
 reason that names the missing link.
