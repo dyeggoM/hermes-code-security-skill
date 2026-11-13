@@ -47,7 +47,7 @@ for dest in "${targets[@]}"; do
   done
 done
 
-echo "CLI:    $tools/security_matrix.py"
+echo "CLI:    $tools/security_matrix.py ($(python3 "$tools/security_matrix.py" version))"
 for dest in "${targets[@]}"; do
   echo "Skills: $dest/hermes-security-{scanner,remediator,validator}"
 done

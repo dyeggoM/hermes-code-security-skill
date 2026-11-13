@@ -278,5 +278,55 @@ class Targets(Base):
         self.assertIn('open audit targets', r.stderr)
 
 
+class PythonScope(Base):
+    """A Python repo is source too: the first run of this tool on one scanned zero files."""
+
+    def _commit(self):
+        git(self.d, 'add', '-f', '.')
+        git(self.d, 'commit', '-qm', 'init')
+
+    def test_python_sources_are_in_scope(self):
+        self.write('app/main.py', 'from fastapi import FastAPI\n')
+        self.write('app/services/payments.py', 'def charge():\n    return 1\n')
+        self.write('pyproject.toml', '[project]\nname = "x"\n')
+        self._commit()
+        paths = json.loads(self.ok('scan', '--mode', 'full').stdout)['paths']
+        self.assertEqual(paths, ['app/main.py', 'app/services/payments.py', 'pyproject.toml'])
+
+    def test_test_trees_and_caches_are_skipped_and_opt_back_in(self):
+        self.write('app/main.py', 'x = 1\n')
+        self.write('tests/test_one.py', 'def test(): pass\n')
+        self.write('app/__pycache__/main.cpython-312.py', '# bytecode\n')
+        self.write('.venv/lib/python3.12/site-packages/pkg/__init__.py', 'y = 2\n')
+        self._commit()
+        self.assertEqual(json.loads(self.ok('scan', '--mode', 'full').stdout)['paths'], ['app/main.py'])
+        with_tests = json.loads(self.ok('scan', '--mode', 'full', '--include-tests').stdout)['paths']
+        self.assertEqual(with_tests, ['app/main.py', 'tests/test_one.py'])
+
+    def test_alembic_versions_count_as_generated(self):
+        self.write('app/main.py', 'x = 1\n')
+        self.write('alembic/versions/001_init.py', 'revision = "001"\n')
+        self._commit()
+        self.assertEqual(json.loads(self.ok('scan', '--mode', 'full').stdout)['paths'], ['app/main.py'])
+        self.assertIn('alembic/versions/001_init.py',
+                      json.loads(self.ok('scan', '--mode', 'full', '--include-generated').stdout)['paths'])
+
+
+class Version(Base):
+    def test_version_runs_outside_a_git_repository(self):
+        outside = self.p / 'not-a-repo'
+        outside.mkdir()
+        r = subprocess.run([sys.executable, str(CLI), 'version'], capture_output=True, text=True, cwd=str(outside))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout.strip(), r'^\d+\.\d+\.\d+$')
+
+    def test_status_carries_the_version(self):
+        self.write('A.cs', 'class A {}')
+        git(self.d, 'add', '.')
+        git(self.d, 'commit', '-qm', 'init')
+        payload = json.loads(self.ok('status').stdout)
+        self.assertIn('version', payload)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,11 +1,11 @@
 ---
 name: hermes-security-remediator
 description: Reproduce security candidates before confirming them, then fix the confirmed ones with regression tests.
-version: 0.2.0
+version: 0.2.1
 metadata:
   hermes:
     category: software-development
-    tags: [security, remediation, csharp]
+    tags: [security, remediation, csharp, python]
 ---
 # Security Remediator
 Read `SECURITY_MATRIX.md`, `.security/REMEDIATION_STATUS.md` and the audit target each candidate came from. Then **reproduce before believing it**.
@@ -24,7 +24,7 @@ python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXX
 - Cannot drive it inside the budget → leave it `needs_validation` and say what is missing. Two honest attempts with no progress is the stop rule: record what was tried and move on.
 
 ## Fix the confirmed ones
-Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
+Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Run the project's own commands, not a guess: `dotnet build` + `dotnet test <csproj>` for .NET, `pytest -q <path>::<test>` + `ruff check` + `mypy` (if configured) for Python, `npm test` + `npm run typecheck` for a Quasar/Vue app. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
 
 ```bash
 python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXXXXXX \

@@ -1,11 +1,11 @@
 ---
 name: hermes-security-scanner
 description: Scout audit targets by reachability, then analyse each one and record evidence-backed candidates.
-version: 0.2.0
+version: 0.2.1
 metadata:
   hermes:
     category: software-development
-    tags: [security, csharp, audit, git]
+    tags: [security, csharp, python, audit, git]
 ---
 # Security Scanner
 Two passes, and they are different jobs. **Scout** decides what is worth reading; **Analyst** reads it. Skipping the scout turns a whole repository into an arbitrary, expensive read; skipping the analyst turns a target list into a false sense of coverage. This split is the one OpenAI used to make a 40M-line kernel tractable: 5,034 audit targets covering ~7% of the code, and deep analysis only there.
@@ -42,7 +42,7 @@ python3 ~/.hermes/security-tools/security_matrix.py --repo . target-close T-XXXX
 - `dismissed` needs a reason naming the missing link ("no attacker-controlled value reaches `Path.Combine`"), not a shrug.
 - Evidence is `file:line` plus the code or the request that proves the claim. Do not call a candidate confirmed: that word belongs to the remediator and is earned by a reproduction.
 - Mark files you actually read with `scope-reviewed --run RUN --path PATH --actor scanner-agent`, or `--all` for a run read in one pass (a 28-file scope is 28 shell calls otherwise, and one typo leaves the gate blocked). The tool cannot tell whether you read them; the review is only as good as those marks.
-- Scope covers `.cs .csproj .json .config .yml .yaml .razor .cshtml .ts .tsx .js .mjs .cjs .vue .sh .ps1 .sql .html`, skipping EF `Migrations/`, `*.Designer.cs`, lockfiles, `bin`, `obj`, `node_modules` (`--include-generated` opts them back in). Curated `.txt`/`.md` files a repo treats as contracts (allowed-route lists, `AGENTS.md` rules) are out of scope — read them by hand when they gate the review.
+- Scope covers `.cs .csproj .json .config .yml .yaml .razor .cshtml .ts .tsx .js .mjs .cjs .vue .sh .ps1 .sql .html .py .pyi .toml .ini`, skipping dependency caches and tool state (`bin`, `obj`, `node_modules`, `__pycache__`, `.venv`, `.mypy_cache`, `.pytest_cache`, `dist`, `build`), generated trees (EF `Migrations/`, `*.Designer.cs`, `alembic/versions/`, lockfiles) and the `tests/` tree — **test trees are not attack surface**; `--include-tests` opts them back in when the audit is about fixtures (a committed secret, a credential baked into a sample), and `--include-generated` re-adds the generated trees. Curated `.txt`/`.md` files a repo treats as contracts (allowed-route lists, `AGENTS.md` rules) are out of scope — read them by hand when they gate the review.
 
 ## Order of work, and what invalidates it
 `scan` → scout targets → analyst findings → close targets → remediator reproduces and fixes → independent validator. `scan` supersedes the previous run's unreviewed entries, invalidates the recorded review (keyed to the scope digest and the source hashes) and reopens findings whose file changed, so run it once the edits for the task are done, not while files are still changing. An open target blocks `review --status passed` exactly like an unreviewed file does.
