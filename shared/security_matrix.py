@@ -22,6 +22,12 @@ def git(root,*args):
     if x.returncode: raise RuntimeError(x.stderr.strip() or 'git failed')
     return x.stdout.strip()
 
+def head_sha(root):
+    """HEAD of a repository that has at least one commit, with an error a human can act on."""
+    try: return git(root,'rev-parse','HEAD')
+    except RuntimeError:
+        raise RuntimeError('this repository has no commits yet; commit once before running the matrix')
+
 def root_dir(value):
     p=Path(value).resolve()
     git(p,'rev-parse','--show-toplevel')
@@ -97,7 +103,7 @@ def target_paths(values):
 
 def evaluate(root,c):
     """Read-only verdict: what the gate decides and why. Never writes anything."""
-    head=git(root,'rev-parse','HEAD')
+    head=head_sha(root)
     if c is None:
         return {'valid':False,'pending':0,'unresolved':0,'open_targets':0,'head':head,'latest':None,
                 'reason':'no security ledger in this clone (.security/security.db) — run a scan first'}
@@ -189,7 +195,7 @@ def main():
     root=root_dir(args.repo);c=db(root,create=args.cmd not in ('status','check'))
     try:
         if args.cmd=='scan':
-            head=git(root,'rev-parse','HEAD');paths=files(root,args.mode,args.base,args.include_generated,args.include_tests)
+            head=head_sha(root);paths=files(root,args.mode,args.base,args.include_generated,args.include_tests)
             # A new scan supersedes the previous run's outstanding scope: keeping old pending rows
             # would block the gate forever on files a later run no longer lists.
             c.execute("UPDATE scope SET status='superseded' WHERE status='pending'")
@@ -266,7 +272,7 @@ def main():
             open_targets=c.execute("SELECT COUNT(*) FROM targets WHERE status='open'").fetchone()[0]
             if args.status=='passed' and (unresolved or pending or open_targets):
                 raise ValueError(f'Cannot pass: {unresolved} unresolved, {pending} unreviewed scope entries, {open_targets} open audit targets')
-            c.execute('INSERT INTO reviews(commit_sha,scope_digest,status,reviewer,note,created_at) VALUES(?,?,?,?,?,?)',(git(root,'rev-parse','HEAD'),snapshot(root,c),args.status,args.reviewer,args.note,now()))
+            c.execute('INSERT INTO reviews(commit_sha,scope_digest,status,reviewer,note,created_at) VALUES(?,?,?,?,?,?)',(head_sha(root),snapshot(root,c),args.status,args.reviewer,args.note,now()))
             c.commit();render(root,c);print('review recorded:',args.status)
         elif args.cmd in ('status','check'):
             # Both are read-only: a command that answers "is this committable?" must not rewrite the

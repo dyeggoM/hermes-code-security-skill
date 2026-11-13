@@ -328,5 +328,14 @@ class Version(Base):
         self.assertIn('version', payload)
 
 
+class UnbornRepo(Base):
+    def test_scan_says_the_repository_has_no_commits(self):
+        self.write('A.cs', 'class A {}')
+        r = self.run_cli('scan', '--mode', 'full')
+        self.assertEqual(r.returncode, 2)
+        self.assertIn('no commits yet', r.stderr)
+        self.assertNotIn('ambiguous argument', r.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
