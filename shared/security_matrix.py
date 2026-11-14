@@ -14,7 +14,7 @@ is or what a bug is.
 import argparse, datetime, hashlib, json, sqlite3, subprocess, sys
 from pathlib import Path
 
-VERSION = '0.3.0'
+VERSION = '0.4.1'
 SEVERITIES = ('critical', 'high', 'medium', 'low')
 
 def git(root,*args):

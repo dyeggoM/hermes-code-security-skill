@@ -1,7 +1,7 @@
 ---
 name: hermes-security-scanner
 description: Scout audit targets by reachability, then analyse each one and record evidence-backed candidates.
-version: 0.4.0
+version: 0.4.1
 author: Hermes Agent
 license: MIT
 metadata:
@@ -16,7 +16,15 @@ Two passes, and they are different jobs. **Scout** decides what is worth reading
 Load this when a repository, a changed surface, or an external hardening checklist has to become audited findings with evidence. It ends when the candidates are recorded and the targets closed: the remediator reproduces and patches them, the validator gives the independent review.
 
 ## Scout — cheap, structural, no deep reading
-After a completed code-editing task run `python3 ~/.hermes/security-tools/security_matrix.py --repo . scan --mode incremental` (`--mode full` only on explicit request). It returns *paths*, not targets.
+
+`scripts/install.sh` puts the CLI at `${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py`.
+Set it once per session and use `$SM` in every command below (the remediator and the validator read the
+same variable, so a different install location is one export, not a rewrite):
+
+```bash
+SM="${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py"
+```
+After a completed code-editing task run `python3 $SM --repo . scan --mode incremental` (`--mode full` only on explicit request). It returns *paths*, not targets.
 
 **Check the scan covers the repo's primary language before scouting.** Group the returned paths by extension and look for the language the product is written in: a scan of a Python or TypeScript service that comes back with only JSON, YAML, HTML and shell means the tool's extension list is wrong, not that the repo is small — and every later pass would be theatre over 0% of the code. The list is a hardcoded constant: extend it (with that language's dependency and build directories skipped), re-scan, and confirm the count moved before spending anything on a scout.
 
@@ -26,7 +34,7 @@ Convert the paths into audit targets, judged on two axes only:
 - **Relevance** — why it matters if it is wrong: auth boundary, file write, path built from input, raw SQL, deserialization, outbound request, token lifetime, log sink, seeded identity.
 
 ```bash
-python3 ~/.hermes/security-tools/security_matrix.py --repo . target-add \
+python3 $SM --repo . target-add \
   --title "Upload path" --path src/api/uploads.py \
   --reachability user --relevance "writes caller-named files to disk" \
   --priority high --actor scout-agent
@@ -57,11 +65,11 @@ For each open target, read that code and the call chain in and out of it, state 
 Record every concrete candidate tied to its target, then close the target:
 
 ```bash
-python3 ~/.hermes/security-tools/security_matrix.py --repo . finding \
+python3 $SM --repo . finding \
   --path src/api/uploads.py --symbol upload_attachment \
   --title "..." --severity high --description "..." --evidence "uploads.py:88 ..." \
   --target T-XXXXXXXX --actor scanner-agent
-python3 ~/.hermes/security-tools/security_matrix.py --repo . target-close T-XXXXXXXX \
+python3 $SM --repo . target-close T-XXXXXXXX \
   --status audited --actor scanner-agent --note "read upload_attachment, save_file, storage; sinks checked"
 ```
 

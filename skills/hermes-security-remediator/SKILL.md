@@ -1,7 +1,7 @@
 ---
 name: hermes-security-remediator
 description: Reproduce security candidates before confirming them, then fix the confirmed ones with regression tests.
-version: 0.4.0
+version: 0.4.1
 author: Hermes Agent
 license: MIT
 metadata:
@@ -16,7 +16,7 @@ Read `SECURITY_MATRIX.md`, `.security/REMEDIATION_STATUS.md` and the audit targe
 For every `needs_validation` candidate, build the smallest probe that exercises the claimed path and run it: `curl` against a sandbox instance, a focused test, a script, or a direct call into the function from the language's interpreter. Copy the repo to your own sandbox — its own database file, its own port — never against a tree someone else is working in. Put the request and the observed output in the transition note:
 
 ```bash
-python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXXXXXX \
+python3 $SM --repo . transition SEC-XXXXXXXX \
   --status confirmed --actor verifier-agent \
   --note "repro: POST /api/uploads item_id=999999 -F file=@x.bin -> 500 FK; media/999999/x.bin left on disk (ls)"
 ```
@@ -26,10 +26,10 @@ python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXX
 - Cannot drive it inside the budget → leave it `needs_validation` and say what is missing. Two honest attempts with no progress is the stop rule: record what was tried and move on.
 
 ## Fix the confirmed ones
-Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Run the project's own commands, read from its manifest rather than guessed: `dotnet build` + `dotnet test <csproj>` for .NET, `pytest -q <path>::<test>` + `ruff check` + `mypy` (if configured) for Python, whatever `scripts.test` declares in `package.json` for a JS/TS app. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
+`$SM` is the security matrix CLI that the scanner already set (`SM="${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py"`); set it the same way if you started the session here. Record `in_remediation`, implement the smallest safe fix, and add a regression test that fails before the fix and passes after it. Run the project's own commands, read from its manifest rather than guessed: `dotnet build` + `dotnet test <csproj>` for .NET, `pytest -q <path>::<test>` + `ruff check` + `mypy` (if configured) for Python, whatever `scripts.test` declares in `package.json` for a JS/TS app. Then look for siblings: grep for the same pattern elsewhere in the target before closing — one patched sink is how the variant survives. Keep the diff to the concern; a security change bundled with a refactor cannot be verified.
 
 ```bash
-python3 ~/.hermes/security-tools/security_matrix.py --repo . transition SEC-XXXXXXXX \
+python3 $SM --repo . transition SEC-XXXXXXXX \
   --status fixed_pending_verification --actor fix-agent \
   --note "guard added at uploads.py:88; test_upload_with_missing_parent_returns_400 green; both write paths audited"
 ```

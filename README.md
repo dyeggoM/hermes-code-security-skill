@@ -10,7 +10,7 @@ while anything is open. The reading of the code is the agent's job.
 
 ```bash
 bash scripts/install.sh                                  # shared skills dir
-bash scripts/install.sh --profile code-orchestrator      # shared dir + that profile's skills dir
+bash scripts/install.sh --profile my-bot               # shared dir + that profile's skills dir
 ```
 
 It copies the CLI to `~/.hermes/security-tools/security_matrix.py` and the three skills to
@@ -22,9 +22,11 @@ one, so installing only to `~/.hermes/skills` leaves that profile loading the pr
 the installer reports success. `--profile` (or `HERMES_PROFILE`) writes both and prints each
 destination.
 
-The skills invoke the CLI by that absolute path on purpose: Hermes does not export
+The skills call the CLI as `python3 $SM`, with `SM` defined once per session as
+`${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py`. Hermes does not export
 `HERMES_SKILL_DIR` to the shell, so a path relative to the skill directory works in one layout and
-breaks in every other one.
+breaks in every other one; one variable at the top of the session is the version that survives a
+different install location.
 
 ## Use
 
@@ -100,6 +102,13 @@ Artifacts written into the target repo: `SECURITY_MATRIX.md`, `.security/REMEDIA
 `.security/FINAL_SECURITY_REVIEW.md`, `.security/security.db`. Keep `.security/` out of Git (the
 shipped `.gitignore` covers this repository only) unless you deliberately want the database in
 history.
+
+## Portability
+
+Plain markdown plus one stdlib-only Python CLI: no dependency, no service, no vendor. Any agent that
+can read files and run a shell can adopt it — point it at `skills/hermes-security-scanner/SKILL.md`,
+install the CLI with `scripts/install.sh`, and the state lives in `.security/` in the repository being
+audited. Hermes loads the skill automatically; nothing in the flow assumes it.
 
 ## Automatic integration
 

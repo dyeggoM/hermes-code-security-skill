@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.1 — portable by construction
+
+A pass with one question: can an agent that has never seen this repo adopt the skill without being
+told anything about where it came from?
+
+- **One variable instead of a hardcoded path.** Every example was `python3
+  ~/.hermes/security-tools/security_matrix.py`; it is now `python3 $SM`, with `SM` defined once as
+  `${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py` in the scanner, and the
+  same definition restated in the remediator and the validator so a session that starts mid-flow is
+  not blocked on a mystery variable. A different install location is one export.
+- **No team or product vocabulary left.** `--profile code-orchestrator` in the installer and README
+  became `--profile my-bot`; "Superadmin-only policies" in the reachability table became "Admin-only
+  policies" — the table already told the reader to map their own role names onto `privileged`, so the
+  example was the only thing tying it to one product.
+- Installed skill versions and the CLI `VERSION` are aligned at 0.4.1 (they had drifted: the CLI
+  still said 0.3.0 while the skills said 0.4.0).
+
 ## v0.4.0 — the lessons of a real audit round
 
 Merged back from the skills that were being refined inside a bot team during a live audit of a

@@ -44,7 +44,7 @@ its input.
 | `[AllowAnonymous]`, or no attribute on an action in a controller without `[Authorize]` | `anonymous` |
 | `[Authorize]` with no role, or a policy that only requires authentication | `user` |
 | A policy whose assertion checks `IsInRole("admin")`-style membership | `privileged` |
-| Superadmin-only policies, impersonation endpoints, user/role management | `privileged` (highest) |
+| Admin-only policies, impersonation endpoints, user/role management | `privileged` (highest) |
 | Background service, `IHostedService`, startup seeding, migration, `SaveChanges` interceptor | `process` |
 | TypeScript/Vue/JS under the bundle directory | `anonymous` — the browser is the attacker's machine |
 
@@ -131,7 +131,7 @@ request surface.
 Two shapes, the same steps — pick the one that matches the repo.
 
 ```bash
-SM=~/.hermes/security-tools/security_matrix.py
+SM="${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py"
 
 # 1. scope
 python3 $SM --repo . scan --mode full
