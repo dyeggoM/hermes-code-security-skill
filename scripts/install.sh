@@ -6,8 +6,8 @@
 #
 # Usage:
 #   bash scripts/install.sh                          # shared skills dir (~/.hermes/skills)
-#   bash scripts/install.sh --profile code-orchestrator
-#   HERMES_PROFILE=code-orchestrator bash scripts/install.sh
+#   bash scripts/install.sh --profile my-bot
+#   HERMES_PROFILE=my-bot bash scripts/install.sh
 #
 # A profile with its own `skills/` directory shadows the shared one, so installing only to the shared
 # directory leaves that profile running an older copy of these skills while reporting success. When a
