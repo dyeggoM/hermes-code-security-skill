@@ -10,10 +10,10 @@ told anything about where it came from?
   `${HERMES_SECURITY_TOOLS:-$HOME/.hermes/security-tools}/security_matrix.py` in the scanner, and the
   same definition restated in the remediator and the validator so a session that starts mid-flow is
   not blocked on a mystery variable. A different install location is one export.
-- **No team or product vocabulary left.** `--profile code-orchestrator` in the installer and README
-  became `--profile my-bot`; "Superadmin-only policies" in the reachability table became "Admin-only
-  policies" — the table already told the reader to map their own role names onto `privileged`, so the
-  example was the only thing tying it to one product.
+- **No team or product vocabulary left.** The installer and README used a real bot profile name as
+  their example; it is `<profile>`/`my-bot` now. The reachability table's privileged row named one
+  product's top role; it says "Admin-only policies" — the table already tells the reader to map their
+  own role names onto `privileged`, so the example was the only thing tying it to one product.
 - Installed skill versions and the CLI `VERSION` are aligned at 0.4.1 (they had drifted: the CLI
   still said 0.3.0 while the skills said 0.4.0).
 
