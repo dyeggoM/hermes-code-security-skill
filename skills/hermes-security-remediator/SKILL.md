@@ -1,7 +1,7 @@
 ---
 name: hermes-security-remediator
 description: Reproduce security candidates before confirming them, then fix the confirmed ones with regression tests.
-version: 0.4.1
+version: 0.4.2
 author: Hermes Agent
 license: MIT
 metadata:
@@ -44,6 +44,39 @@ Before accepting a fix that changes a lifecycle or status value, read the schema
 - **Uniqueness that forbids the obvious workaround.** A unique key on a "live" row (one active lease/mandate/token per owner) means "expire the old row and create another" is not available; the fix has to make the existing row reusable — gate on the *live* status rather than a local TTL.
 
 When the invariant blocks the requested fix, the design changes, never the constraint: a schema migration on a ledger or a billing table is not a side effect of a security patch. Rewrite the brief around the real contract ("reuse while the provider object is alive" instead of "expire after TTL") and record in the note which constraint forced the shape — otherwise the next reviewer re-proposes the version the schema refuses.
+
+## Gates that only a browser enforces
+`curl` proves the route, not the deployment. Two classes of finding live entirely in the browser's rules and survive every server-side test:
+
+- **A method missing from the CORS allow-list.** The server route works, the preflight answers `Access-Control-Allow-Methods` without that verb, and the browser refuses to send the call: the client sees `TypeError: Failed to fetch`, never a status. Probe it as a browser would —`OPTIONS` with `Origin` and `Access-Control-Request-Method`, then read the allow-list — and pin it with a test that takes the verbs from the app's own route table, not from a list typed into the test — ASP.NET `IActionDescriptorCollectionProvider` → `HttpMethodActionConstraint`, FastAPI `app.routes[*].methods`, Express's router stack, Django's `URLResolver` — so a new verb cannot drift out of the policy. Same shape for `Access-Control-Allow-Headers`.
+- **A credential the client never sends.** A gate that requires a cookie is enforced by the browser only if the call sets `credentials: 'include'`; a transport that only does so for the refresh endpoint passes every same-origin test and fails in production, where the SPA and the API are different ports. Check the transport, not just the route, and add a test asserting the option on the call that needs it.
+
+Reflecting any origin while allowing credentials is a real exposure on a shared network (a page on the internet reads the API with the tester's cookie). In development reflect loopback and private ranges only, plus the configured list, and say so in a test — the LAN case must keep working, the public one must not.
+
+## When the finding is "this credential cannot be revoked"
+A borrowed or delegated token (impersonation, support access, a scoped share link) is unrevocable by construction: the claim says *who*, nothing says whether it is *still allowed*. Hardening the exchange that minted it does not fix that — the token already out there keeps working until it expires, cannot be ended twice-detected, and cannot be paired with its own start event. The fix shape is a row, not another claim:
+
+- **Give the borrow an entity and put its id in the token** — `imp_sid` in the recipe below, whatever name your claims use. One row per borrow: actor, target, started, expires, ended, ended-by. `Impersonate`/`ImpersonateStart`/`ImpersonateEnd` already mean a lifecycle — make it real.
+- **Check the row wherever the token is validated**, not in the controllers: the check has to run before authorization, so a closed borrow fails as *unauthenticated* and no route has to remember to look.
+- **The end path must not depend on the credential the exchange requires.** If ending the borrow needs the actor's refresh cookie and that cookie is gone (family revoked, account deactivated, another device), the borrow is stuck — the finding you were fixing is still there in a new place. Answer "ended, no token" (`204`) when the proof is absent: the borrow closes, the client falls back to the session it kept aside, and nothing is upgraded. Only the *token handback* needs the proof.
+- **Single use falls out of the row**: a second end finds nothing live. Expect the status to move from `403` to `401`, because after revocation the credential dies in authentication, before authorization can answer — update those assertions to the new semantics with a one-line comment saying so. Deleting or loosening them to the old code hides whether revocation works at all.
+- **Name the borrow in the audit trail**, on the Start/End pair *and* on any row written while it was live, so "what did this borrow touch" is a query. Pairing is the point: a session id only in `AfterJson` cannot be filtered on.
+- **Keep the borrow's own row out of the audit stream.** An interceptor that watches every modified entity turns each state change of your new table into an `Update` row that swamps the pair you actually need; exclude the control table and let the Start/End events carry the meaning.
+- **Ship the client half in the same change.** A server gate that the SPA does not satisfy (a cookie it never sends, a `204` it parses as an error) turns the feature's exit button into a refusal and silently loses the closing audit row. Grep the transport and drive the real screen once, not just the route.
+
+See `references/delegation-token-revocation.md` for the concrete entity/claim/validation recipe and the verification matrix.
+
+## After the fix: prove both sides
+A gate that only closes the hole can silently break the feature, and the fallback hides it.
+
+- **Bare holder fails, legitimate caller passes.** For a token-borrowing or impersonation finding, run the original probe again (the borrowed credential alone must now be refused) *and* the intended path (the actor's own session must still succeed). A fix verified only in the negative direction leaves the feature dead.
+- **The trail still closes.** When the legitimate path writes an audit row, assert the pair exists after the fix. A client that falls back locally clears the UI while the `…End` row stops being written — the feature looks fine and the evidence is gone.
+- **Revert the fix to see the test fail.** A regression test written after the fix passes for the wrong reasons more often than not: remove the guard, run it, read the failure message (`these verbs are routed but a browser would refuse them: PATCH` is the shape), restore. If it passes with the guard removed, it is not a regression test.
+- **Confirm the running instance is the code under review.** An endpoint that answers `404`, or a feature that behaves like the old version, is usually a server started before the change. Check a marker (a route that only exists after the fix, a response header,  the branch the build came from) before concluding a fix is broken — two of these cost a diagnosis round each.
+  Restarting it is where the shell dies by its own hand: `pgrep -f '<script>.sh'` also matches the
+  command line that *launches* that script, so a pattern kill issued in the same call terminates the
+  agent's own shell mid-command and leaves the service down. Kill in one call (match the listening
+  socket, `ss -ltn | grep :PORT`, or the full binary path), start in a second, poll the port in a third.
 
 ## Dedupe and idempotency keys
 A replay finding is usually "fixed" by changing the dedupe key, and that is where the damage happens: the key has to stay **unique per event**, and the field a provider signs is usually not.
