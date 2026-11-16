@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.2 — the remediator learns from a live round
+
+Written by the agent holding the skill during a real audit of an ASP.NET + Vue service, then pulled
+back here. Nothing in it is product-specific; the stack is named only where the code is stack-specific.
+
+- **Gates that only a browser enforces.** `curl` proves the route, not the deployment: a verb missing
+  from the CORS allow-list and a credential the client never sends both pass every server-side test and
+  fail in production. Probe as a browser would, and pin the policy with a test that reads the verbs
+  from the app's own route table — with the equivalents for FastAPI, Express and Django.
+- **"This credential cannot be revoked".** A borrowed token is the whole state, so nothing can end it
+  early, detect a second end or say what it touched. The fix is a row, not another claim: a session
+  entity whose id travels in the token, checked where tokens are validated (so a closed borrow fails as
+  unauthenticated), an end path that does not depend on the credential it is closing, single use as a
+  consequence of the row, and the borrow named in the audit trail. Depth in
+  `references/delegation-token-revocation.md`, including the verification matrix and the residuals to
+  state rather than hide.
+- **After the fix, prove both sides.** A gate that only closes the hole can silently break the
+  feature: the bare holder must fail *and* the legitimate caller must pass, the audit pair must still
+  close, and reverting the fix must make the test fail. Plus the operational trap that cost a round:
+  a `pgrep -f '<script>.sh'` kill matches the command line that launched the script and takes the
+  agent's own shell down with the service.
+
 ## v0.4.1 — portable by construction
 
 A pass with one question: can an agent that has never seen this repo adopt the skill without being
