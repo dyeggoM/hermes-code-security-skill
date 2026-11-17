@@ -1,7 +1,7 @@
 ---
 name: hermes-security-scanner
 description: Scout audit targets by reachability, then analyse each one and record evidence-backed candidates.
-version: 0.4.1
+version: 0.4.2
 author: Hermes Agent
 license: MIT
 metadata:
