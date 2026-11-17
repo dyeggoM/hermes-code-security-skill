@@ -1,7 +1,7 @@
 ---
 name: hermes-security-validator
 description: Independent final security review that re-runs the reproductions and gates the release.
-version: 0.4.1
+version: 0.4.2
 author: Hermes Agent
 license: MIT
 metadata:
@@ -42,6 +42,15 @@ Anything that decides *is this the same event* or *is this the same person* — 
 - The mechanical check is one query on the inbox/ledger after replaying both events (row count, and the state each event produced). If two events that must differ map to one row, the fix is wrong regardless of what it closed.
 
 When no signed identifier distinguishes two events, the honest verdict is `accepted_risk` with the residual cost named (bounded by the ledger and the rate limit) — not a key that silently drops half the events. `accepted_risk` keeps `review --status passed` refused exactly like an open finding: surface those trades to the owner early instead of discovering at signing time that the gate cannot go green.
+
+## Re-auditing a fix round
+When the pass you are asked for is *did the fixes work*, the unit of the report is the finding, not the file:
+
+- **One verdict per finding, with the request that proves it.** `verified` or `not verified`, then the status code, the row read back, or the line — a fix you cannot reproduce is a finding, not a pass, and "the test passes" is not the reproduction (the test may assert the response instead of the row).
+- **A half-true fix is `not verified`.** "Writes into the target and audits both tenants" split cleanly: the write was right and the second record was being stamped by the override it was meant to escape. Score the claim as written, not the half that landed; a fix graded on its strongest half is how a boundary ships documented and absent.
+- **Attack the guard the fix added, and name what it does not catch.** A drift test, a scan, a new allow-list is a convention until you try to evade it: a renamed receiver, a service locator, the literal on the next line. Report the holes as the guard's stated reach rather than as a pass, because the next reader will otherwise quote it as an invariant.
+- **New findings in the fix's own new code are expected; count them and say the trend.** Successive passes on one branch ran 10 → 7 → 4 new items, all of them in mechanism the fixes themselves introduced, and the tail was unreachable by any request. That number is the boundary closing — and it is also the stopping rule: when new items stop being reachable over HTTP, the round is done and the residue belongs in a note, not another pass.
+- **List what you checked and found sound.** The coverage sentence is what tells the reader the boundary was walked instead of sampled: an unlisted bypass site (a soft-delete filter bypassed with `IgnoreQueryFilters` or your ORM's equivalent escape hatch, a second save path, an inherited verb) is the leak nobody looked at, and its absence from the report is not a pass.
 
 ## Record the verdict
 - A new problem → record it as a `finding` tied to its target, then `review --status failed --reviewer <you> --note "<what breaks>"`.

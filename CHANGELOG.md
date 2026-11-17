@@ -16,6 +16,25 @@ back here. Nothing in it is product-specific; the stack is named only where the 
   consequence of the row, and the borrow named in the audit trail. Depth in
   `references/delegation-token-revocation.md`, including the verification matrix and the residuals to
   state rather than hide.
+### Validator — re-auditing a fix round
+
+From the same round, on the other side of the hand-off: when the pass is *did the fixes work*, the
+unit of the report is the finding, not the file.
+
+- **One verdict per finding, with the request that proves it** — the status code, the row read back,
+  or the line. "The test passes" is not the reproduction: the test may assert the response instead of
+  the row.
+- **A half-true fix is `not verified`.** A fix that "writes into the target and audits both tenants"
+  split cleanly in practice: the write was right, the second record was stamped by the override the
+  fix was meant to escape. Score the claim as written, not its strongest half.
+- **Attack the guard the fix added** and report what it does not catch — a renamed receiver, a
+  service locator, the literal on the next line — as the guard's stated reach, not as a pass.
+- **Count the new findings the fixes introduce** and read the trend: 10 → 7 → 4 in one branch, all in
+  the fix's own new mechanism, the tail unreachable by any request. That is the stopping rule as well
+  as the boundary closing; the residue is a note, not another pass.
+- **List what you checked and found sound.** An unlisted bypass site is the leak nobody looked at, and
+  its absence from the report is not a pass.
+
 - **After the fix, prove both sides.** A gate that only closes the hole can silently break the
   feature: the bare holder must fail *and* the legitimate caller must pass, the audit pair must still
   close, and reverting the fix must make the test fail. Plus the operational trap that cost a round:
@@ -38,6 +57,12 @@ told anything about where it came from?
   own role names onto `privileged`, so the example was the only thing tying it to one product.
 - Installed skill versions and the CLI `VERSION` are aligned at 0.4.1 (they had drifted: the CLI
   still said 0.3.0 while the skills said 0.4.0).
+
+### One number per release
+
+Scanner bumped to 0.4.2 with the rest, though its text did not change in this round: a scanner at
+0.4.1 next to a remediator at 0.4.2 is the same drift that made the CLI lie about its own version.
+The CLI's behaviour is unchanged; 0.4.2 is the bundle.
 
 ## v0.4.0 — the lessons of a real audit round
 
